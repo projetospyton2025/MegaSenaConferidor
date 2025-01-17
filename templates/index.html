@@ -10,12 +10,22 @@
     <div class="container">
         <h1>Conferidor MegaSena</h1>
         
+
         <div class="volante">
             <h2>Selecione 6 números</h2>
             <div class="numeros">
                 {% for i in range(1, 61) %}
                     <button type="button" class="numero" data-numero="{{ i }}">{{ '%02d' % i }}</button>
                 {% endfor %}
+            </div>
+        </div>
+
+        <!--# Adicione este HTML após a div do volante-->
+        <div class="drop-zone" id="drop-zone">
+            <div class="drop-zone-content">
+                <p>Arraste e solte seu arquivo aqui ou clique para selecionar</p>
+                <p class="drop-zone-hint">Arquivos .txt ou .xlsx</p>
+                <input type="file" id="file-input" accept=".txt,.xlsx" hidden>
             </div>
         </div>
 
