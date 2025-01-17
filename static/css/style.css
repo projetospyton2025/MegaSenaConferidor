@@ -453,3 +453,70 @@ body {
 .premio-info {
     color: #28a745;
 }
+/* Estilo para checkbox dos jogos */
+.jogo-checkbox {
+    margin-right: 10px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+/* Atualização no jogo-item para acomodar checkbox */
+.jogo-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    margin: 8px 0;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+    transition: all 0.2s ease;
+}
+
+.jogo-item:hover {
+    background-color: #e9ecef;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Botões de ação para jogos */
+.acoes-jogos {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    justify-content: flex-end;
+}
+
+.btn-acao {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-acao:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-acao:not(:disabled):hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+/* Estilo para jogos selecionados */
+.jogo-item.selecionado {
+    background-color: rgba(0, 135, 81, 0.1);
+    border-color: #008751;
+}
+#contador-jogos {
+    font-weight: bold;
+    color: var(--primary-color);
+}

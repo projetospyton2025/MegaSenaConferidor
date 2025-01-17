@@ -10,7 +10,6 @@
     <div class="container">
         <h1>Conferidor MegaSena</h1>
         
-
         <div class="volante">
             <h2>Selecione 6 números</h2>
             <div class="numeros">
@@ -49,13 +48,29 @@
             <button id="limpar" class="btn btn-vermelho">Limpar</button>
             <button id="sugestao" class="btn btn-roxo">Palpite</button>
             <button id="conferir" class="btn btn-verde">Conferir</button>
-            <!--BOTÃO TESTE NO HTML - EXCLUA SE NÃO QUISER MAIS
-            <button id="btn-teste" class="btn btn-roxo">Gerar Teste</button>-->
+            <!--BOTÃO TESTE NO HTML - EXCLUA SE NÃO QUISER MAIS-->
+            <button id="btn-teste" class="btn btn-roxo">Gerar Teste</button>
         </div>
-
+<!--
         <div class="jogos-incluidos">
             <h3>Jogos Incluídos</h3>
             <div id="lista-jogos" class="lista-jogos"></div>
+        </div>
+
+-->
+        <div class="jogos-incluidos">
+            <h3>Jogos Incluídos (<span id="contador-jogos">0</span> jogos)</h3>
+            <div id="lista-jogos" class="lista-jogos"></div>
+        </div>
+
+         <!-- Elementos adicionados conforme CODIGO-2 -->
+         <div class="acoes-jogos">
+            <button id="btn-remover-selecionados" class="btn-acao" disabled>
+                Remover Selecionados
+            </button>
+            <button id="btn-limpar-todos" class="btn-acao">
+                Limpar Todos
+            </button>
         </div>
 
         <div id="overlay" class="overlay" style="display: none;">
