@@ -182,15 +182,16 @@ def processar_arquivo():
         return jsonify({'error': str(e)}), 500
 
 
+"""
 if __name__ == '__main__':
      app.run(debug=True)
-
-
 """
+
+
      # Agora a parte de configuração da porta
 if __name__ == '__main__':
      port = int(os.environ.get("PORT", 5000))  # Obtém a porta do ambiente ou usa 5000 como padrão
      app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
-"""
+
 
 
