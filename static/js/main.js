@@ -110,7 +110,8 @@ document.addEventListener('DOMContentLoaded', function() {
         alert('1 jogo foi incluído com sucesso!');
         limparBtn.click();
     });
-// Botão Conferir
+
+   // Botão Conferir
 conferirBtn.addEventListener('click', async () => {
     if (jogosIncluidos.length === 0) {
         alert('Inclua pelo menos um jogo antes de conferir!');
@@ -122,6 +123,12 @@ conferirBtn.addEventListener('click', async () => {
 
     if (!inicio || !fim || parseInt(inicio) > parseInt(fim)) {
         alert('Verifique os números dos concursos!');
+        return;
+    }
+
+    // Adicione esta validação
+    if (fim - inicio > 100) { // O NUMERO 100 PODE SER ALTERADO 
+        alert('Por favor, consulte no máximo 100 concursos por vez para evitar sobrecarga.');
         return;
     }
 
@@ -143,11 +150,17 @@ conferirBtn.addEventListener('click', async () => {
             })
         });
 
-        if (conferenciaCancelada) {
-            return;
+        // Novo trecho de tratamento da resposta (adicionado do código2)
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Erro ao conferir jogos');
         }
 
         const data = await response.json();
+
+        if (conferenciaCancelada) {
+            return;
+        }
 
         if (data.error) {
             throw new Error(data.error);
@@ -276,23 +289,28 @@ conferirBtn.addEventListener('click', async () => {
 
         // Atualização da tabela de jogos sorteados
         if (data.jogos_stats) {
-			console.log('Dados recebidos para tabela de jogos mais sorteados:', data.jogos_stats);
+            console.log('Dados recebidos para tabela de jogos mais sorteados:', data.jogos_stats);
             atualizarTabelaJogosSorteados(data.jogos_stats);
         }
 
-        //Confirmação para limpar jogos
+        // Confirmação para limpar jogos
         if (confirm('Deseja limpar os jogos conferidos?')) {
             limparTodosJogos();
         }
 
     } catch (error) {
         console.error('Erro detalhado:', error);
-        alert(`Erro ao conferir jogos: ${error.message}`);
+        // Tratamento adicional para mensagens de erro (adicionado do código2)
+        if (error.message.includes('<!DOCTYPE')) {
+            alert('O serviço está temporariamente indisponível. Por favor, tente novamente mais tarde ou reduza o intervalo de concursos.');
+        } else {
+            alert(error.message);
+        }
     } finally {
         overlay.style.display = 'none';
     }
-  });
-
+});
+ 
 // Funções de Drag and Drop
 function setupDragAndDrop() {
     const dropZone = document.getElementById('drop-zone');

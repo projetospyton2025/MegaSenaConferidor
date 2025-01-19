@@ -1,4 +1,8 @@
 
+
+
+
+
 # Project Structure:
 MegaSenaConferidor/
 ├── requirements.txt

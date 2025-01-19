@@ -1,4 +1,24 @@
 # app.py
+# Valores que podem ser alterados... 
+
+"""
+// Adicione esta validação
+    if (fim - inicio > 100) { // O NUMERO 100 PODE SER ALTERADO 
+        alert('Por favor, consulte no máximo 100 concursos por vez para evitar sobrecarga.');
+        return;
+    }
+
+# Ordena as estatísticas de jogos
+        jogos_stats_ordenados = sorted(
+            [{'numeros': stats['numeros'], 
+              'total': stats['total'], 
+              'distribuicao': stats['distribuicao']} 
+             for stats in jogos_stats.values()],
+            key=lambda x: x['total'],
+            reverse=True
+        )[:10]  # Retorna apenas os 10 mais frequentes
+"""
+
 from flask import Flask, render_template, request, jsonify
 import requests
 from datetime import datetime
@@ -55,6 +75,12 @@ def conferir():
         fim = int(data['fim'])
         jogos = data['jogos']
 
+        # Validação adicional do intervalo
+        if fim - inicio > 1000:  # Limita a 100 concursos por vez
+            return jsonify({
+                'error': 'Por favor, consulte no máximo 100 concursos por vez para evitar sobrecarga.'
+            }), 400
+
         print(f"\nIniciando conferência de {len(jogos)} jogos")
         print(f"Período: concurso {inicio} até {fim}")
         print(f"Jogos recebidos: {jogos}\n")
@@ -76,15 +102,34 @@ def conferir():
             try:
                 print(f"\nVerificando concurso {concurso}:")
                 response = requests.get(f"{API_BASE_URL}/megasena/{concurso}", timeout=5)
-                
-                if response.status_code != 200:
+
+                # Melhor tratamento de erros HTTP
+                if response.status_code == 404:
+                    print(f"Concurso {concurso} não encontrado")
+                    continue
+                elif response.status_code == 429:
+                    return jsonify({
+                        'error': 'Muitas requisições. Por favor, aguarde alguns minutos e tente novamente.'
+                    }), 429
+                elif response.status_code != 200:
                     print(f"Erro ao buscar concurso {concurso}: Status {response.status_code}")
                     continue
 
-                resultado = response.json()
+                # Verifica se é realmente JSON antes de decodificar
+                content_type = response.headers.get('content-type', '')
+                if 'application/json' not in content_type.lower():
+                    print(f"Resposta inesperada do servidor para concurso {concurso}")
+                    continue
+
+                try:
+                    resultado = response.json()
+                except ValueError:
+                    print(f"Resposta inválida do servidor para concurso {concurso}")
+                    continue
+
                 dezenas = [int(d) for d in resultado['dezenas']]
                 print(f"Dezenas sorteadas: {dezenas}")
-                
+
                 # Verifica cada jogo contra este concurso
                 for idx, jogo in enumerate(jogos):
                     print(f"\nJogo {idx + 1}: {jogo}")
@@ -94,7 +139,7 @@ def conferir():
                     # Registra estatísticas para qualquer acerto
                     if acertos > 0:
                         jogos_stats = atualizar_estatisticas_jogo(jogos_stats, jogo, acertos)
-                    
+
                     if acertos >= 4:
                         premio = 0
                         for premiacao in resultado['premiacoes']:
@@ -103,7 +148,7 @@ def conferir():
                                 (acertos == 4 and premiacao['descricao'] == '4 acertos')):
                                 premio = premiacao['valorPremio']
                                 break
-                        
+
                         if acertos == 4:
                             resultados['resumo']['quatro'] += 1
                         elif acertos == 5:
@@ -122,6 +167,12 @@ def conferir():
                         })
                         print(f"Prêmio encontrado! {acertos} acertos")
 
+            except requests.exceptions.Timeout:
+                print(f"Timeout ao buscar concurso {concurso}")
+                continue
+            except requests.exceptions.RequestException as e:
+                print(f"Erro de rede ao buscar concurso {concurso}: {str(e)}")
+                continue
             except Exception as e:
                 print(f"Erro ao processar concurso {concurso}: {str(e)}")
                 continue
@@ -153,7 +204,6 @@ def conferir():
     except Exception as e:
         print(f"Erro geral: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
 
 
 # Adicione esta função ao seu app.py
