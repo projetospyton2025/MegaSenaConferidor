@@ -76,7 +76,7 @@ def conferir():
         jogos = data['jogos']
 
         # Validação adicional do intervalo
-        if fim - inicio > 1000:  # Limita a 100 concursos por vez
+        if fim - inicio > 100:  # Limita a 100 concursos por vez
             return jsonify({
                 'error': 'Por favor, consulte no máximo 100 concursos por vez para evitar sobrecarga.'
             }), 400
