@@ -94,6 +94,37 @@
                 </div>
             </div>
             <div id="detalhes-resultados" class="detalhes-resultados"></div>
+
+            <!--TABELA DE RESUMO DOS RESULTADOS-->
+            <div class="tabela-resumo">
+                <h2>Resumo dos Jogos Premiados</h2>
+                <div class="tabela-container">
+                    <table class="tabela-premios">
+                        <thead>
+                            <tr>
+                                <th>Concurso</th>
+                                <th>Data</th>
+                                <th>Local</th>
+                                <th>Números Sorteados</th>
+                                <th>Seu Jogo</th>
+                                <th>Acertos</th>
+                                <th>Prêmio</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabela-resultados">
+                            <!-- Será preenchido via JavaScript -->
+                        </tbody>
+                        <tfoot id="tabela-totais">
+                            <tr>
+                                <td colspan="6"><strong>Total de Prêmios</strong></td>
+                                <td colspan="2" class="total-premios"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
         </div>
     </div>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
