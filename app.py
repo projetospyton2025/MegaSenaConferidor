@@ -7,6 +7,20 @@ import random  # Adicione esta linha
 
 app = Flask(__name__)
 
+
+def atualizar_estatisticas_jogo(stats, jogo, acertos):
+    """Atualiza as estatísticas de um jogo"""
+    jogo_key = tuple(sorted(jogo))
+    if jogo_key not in stats:
+        stats[jogo_key] = {
+            'total': 0,
+            'distribuicao': {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0},
+            'numeros': list(jogo_key)
+        }
+    stats[jogo_key]['total'] += 1
+    stats[jogo_key]['distribuicao'][acertos] += 1
+    return stats
+
 API_BASE_URL = "https://loteriascaixa-api.herokuapp.com/api"
 
 def get_latest_result():
@@ -33,7 +47,6 @@ def gerar_numeros():
 
 
 
-# app.py - Apenas a parte que precisa mudar
 @app.route('/conferir', methods=['POST'])
 def conferir():
     try:
@@ -55,6 +68,9 @@ def conferir():
             }
         }
 
+        # Inicializa o dicionário de estatísticas
+        jogos_stats = {}
+
         # Verifica cada concurso
         for concurso in range(inicio, fim + 1):
             try:
@@ -74,6 +90,10 @@ def conferir():
                     print(f"\nJogo {idx + 1}: {jogo}")
                     acertos = len(set(jogo) & set(dezenas))
                     print(f"Acertos encontrados: {acertos}")
+
+                    # Registra estatísticas para qualquer acerto
+                    if acertos > 0:
+                        jogos_stats = atualizar_estatisticas_jogo(jogos_stats, jogo, acertos)
                     
                     if acertos >= 4:
                         premio = 0
@@ -106,18 +126,29 @@ def conferir():
                 print(f"Erro ao processar concurso {concurso}: {str(e)}")
                 continue
 
-        print("\nResumo final:")
-        print(f"Quadras: {resultados['resumo']['quatro']}")
-        print(f"Quinas: {resultados['resumo']['cinco']}")
-        print(f"Senas: {resultados['resumo']['seis']}")
+        # Ordena as estatísticas de jogos
+        jogos_stats_ordenados = sorted(
+            [{'numeros': stats['numeros'], 
+              'total': stats['total'], 
+              'distribuicao': stats['distribuicao']} 
+             for stats in jogos_stats.values()],
+            key=lambda x: x['total'],
+            reverse=True
+        )[:10]  # Retorna apenas os 10 mais frequentes
 
+        # Modifica o retorno para incluir jogos_stats
         if not resultados['acertos']:
             return jsonify({
                 'message': 'Nenhum prêmio encontrado nos concursos verificados',
-                'resumo': resultados['resumo']
+                'resumo': resultados['resumo'],
+                'jogos_stats': jogos_stats_ordenados
             }), 200
 
-        return jsonify(resultados)
+        return jsonify({
+            'acertos': resultados['acertos'],
+            'resumo': resultados['resumo'],
+            'jogos_stats': jogos_stats_ordenados
+        })
 
     except Exception as e:
         print(f"Erro geral: {str(e)}")

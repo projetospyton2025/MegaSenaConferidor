@@ -124,7 +124,22 @@
                     </table>
                 </div>
             </div>
-
+            <!-- Adicionar após a div tabela-resumo para trazer a tabela Jogos Mais Sorteados-->
+            <div class="jogos-mais-sorteados">
+                <h2>Jogos Mais Sorteados</h2>
+                <div class="tabela-container">
+                    <table class="tabela-premios" id="tabela-jogos-sorteados">
+                        <thead>
+                            <tr>
+                                <th>Meu Jogo</th>
+                                <th>Total de Acertos</th>
+                                <th>Distribuição</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>

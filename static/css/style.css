@@ -641,3 +641,26 @@ body {
     color: #28a745;
     font-weight: bold;
 }
+/* Estilos para a tabela de jogos mais sorteados */
+.jogos-mais-sorteados {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.jogos-mais-sorteados h2 {
+    color: #333;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.distribuicao-badge {
+    display: inline-block;
+    background-color: #f0f0f0;
+    padding: 4px 8px;
+    border-radius: 12px;
+    margin: 2px;
+    font-size: 0.9em;
+}
