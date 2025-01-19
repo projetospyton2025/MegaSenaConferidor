@@ -11,6 +11,10 @@
         }
     }
 
+   // Adicione esta validação
+    const intervalo = fim - inicio;
+    if (intervalo > 3000) { //Conferência de no máximo 3000 por vez 
+
 // APP.PY
 # Ordena as estatísticas de jogos
         jogos_stats_ordenados = sorted(
@@ -28,6 +32,41 @@ import requests
 from datetime import datetime
 import os
 import random  # Adicione esta linha
+import aiohttp
+import asyncio
+import redis
+import json
+
+
+
+
+
+# Configuração do Redis
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
+
+# Funções auxiliares para o cache
+def get_cached_result(concurso):
+    """Tenta obter resultado do cache"""
+    try:
+        cached = redis_client.get(f"megasena:{concurso}")
+        if cached:
+            return json.loads(cached)
+    except:
+        print(f"Erro ao buscar cache para concurso {concurso}")
+    return None
+
+def set_cached_result(concurso, data):
+    """Armazena resultado no cache"""
+    try:
+        redis_client.setex(
+            f"megasena:{concurso}",
+            CACHE_EXPIRATION,
+            json.dumps(data)
+        )
+    except:
+        print(f"Erro ao armazenar cache para concurso {concurso}")
+
 
 app = Flask(__name__)
 
@@ -71,6 +110,8 @@ def gerar_numeros():
 
 
 
+
+
 @app.route('/conferir', methods=['POST'])
 def conferir():
     try:
@@ -79,10 +120,8 @@ def conferir():
         fim = int(data['fim'])
         jogos = data['jogos']
 
-
         print(f"\nIniciando conferência de {len(jogos)} jogos")
         print(f"Período: concurso {inicio} até {fim}")
-        print(f"Jogos recebidos: {jogos}\n")
 
         resultados = {
             'acertos': [],
@@ -93,49 +132,41 @@ def conferir():
             }
         }
 
-        # Inicializa o dicionário de estatísticas
         jogos_stats = {}
 
-        # Verifica cada concurso
         for concurso in range(inicio, fim + 1):
             try:
-                print(f"\nVerificando concurso {concurso}:")
-                response = requests.get(f"{API_BASE_URL}/megasena/{concurso}", timeout=5)
+                # Tenta buscar do cache primeiro
+                resultado = get_cached_result(concurso)
+                
+                # Se não está no cache, busca da API
+                if not resultado:
+                    print(f"Cache miss para concurso {concurso}")
+                    response = requests.get(f"{API_BASE_URL}/megasena/{concurso}", timeout=5)
+                    
+                    if response.status_code != 200:
+                        print(f"Erro ao buscar concurso {concurso}: Status {response.status_code}")
+                        continue
 
-                # Melhor tratamento de erros HTTP
-                if response.status_code == 404:
-                    print(f"Concurso {concurso} não encontrado")
-                    continue
-                elif response.status_code == 429:
-                    return jsonify({
-                        'error': 'Muitas requisições. Por favor, aguarde alguns minutos e tente novamente.'
-                    }), 429
-                elif response.status_code != 200:
-                    print(f"Erro ao buscar concurso {concurso}: Status {response.status_code}")
-                    continue
-
-                # Verifica se é realmente JSON antes de decodificar
-                content_type = response.headers.get('content-type', '')
-                if 'application/json' not in content_type.lower():
-                    print(f"Resposta inesperada do servidor para concurso {concurso}")
-                    continue
-
-                try:
-                    resultado = response.json()
-                except ValueError:
-                    print(f"Resposta inválida do servidor para concurso {concurso}")
-                    continue
+                    try:
+                        resultado = response.json()
+                        # Armazena no cache
+                        set_cached_result(concurso, resultado)
+                    except ValueError:
+                        print(f"Resposta inválida do servidor para concurso {concurso}")
+                        continue
+                else:
+                    print(f"Cache hit para concurso {concurso}")
 
                 dezenas = [int(d) for d in resultado['dezenas']]
                 print(f"Dezenas sorteadas: {dezenas}")
 
-                # Verifica cada jogo contra este concurso
+                # Resto do código permanece igual...
                 for idx, jogo in enumerate(jogos):
                     print(f"\nJogo {idx + 1}: {jogo}")
                     acertos = len(set(jogo) & set(dezenas))
                     print(f"Acertos encontrados: {acertos}")
 
-                    # Registra estatísticas para qualquer acerto
                     if acertos > 0:
                         jogos_stats = atualizar_estatisticas_jogo(jogos_stats, jogo, acertos)
 
@@ -164,19 +195,12 @@ def conferir():
                             'acertos': acertos,
                             'premio': premio
                         })
-                        print(f"Prêmio encontrado! {acertos} acertos")
 
-            except requests.exceptions.Timeout:
-                print(f"Timeout ao buscar concurso {concurso}")
-                continue
-            except requests.exceptions.RequestException as e:
-                print(f"Erro de rede ao buscar concurso {concurso}: {str(e)}")
-                continue
             except Exception as e:
                 print(f"Erro ao processar concurso {concurso}: {str(e)}")
                 continue
 
-        # Ordena as estatísticas de jogos
+        # O resto do código permanece igual...
         jogos_stats_ordenados = sorted(
             [{'numeros': stats['numeros'], 
               'total': stats['total'], 
@@ -184,9 +208,8 @@ def conferir():
              for stats in jogos_stats.values()],
             key=lambda x: x['total'],
             reverse=True
-        )[:10]  # Retorna apenas os 10 mais frequentes
+        )[:10]
 
-        # Modifica o retorno para incluir jogos_stats
         if not resultados['acertos']:
             return jsonify({
                 'message': 'Nenhum prêmio encontrado nos concursos verificados',
@@ -203,6 +226,7 @@ def conferir():
     except Exception as e:
         print(f"Erro geral: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
 
 
 # Adicione esta função ao seu app.py
@@ -261,6 +285,8 @@ def processar_arquivo():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
 
 
 """
