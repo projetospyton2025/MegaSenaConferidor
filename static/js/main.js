@@ -1,6 +1,7 @@
 // Variáveis globais
 const jogosIncluidos = [];
 const jogosSelecionados = new Set();
+let conferenciaCancelada = false;
 
 // Função para atualizar o contador e mensagem
 function atualizarContadorJogos() {
@@ -38,6 +39,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const listaJogos = document.getElementById('lista-jogos');
     const overlay = document.getElementById('overlay');
     const numerosSelecionados = new Set();
+
+
+    // Adicione o evento para o botão de cancelar
+    // O botão de cancelar conferência precisa ser verificado se existe antes de adicionar o evento:
+    const btnCancelarConferencia = document.getElementById('btn-cancelar-conferencia');
+    if (btnCancelarConferencia) {
+        btnCancelarConferencia.addEventListener('click', () => {
+            conferenciaCancelada = true;
+            overlay.style.display = 'none';
+        });
+    }
+   /* document.getElementById('btn-cancelar-conferencia').addEventListener('click', () => {
+        conferenciaCancelada = true;
+        overlay.style.display = 'none';
+    });
+   */
 
     // Adiciona eventos para os novos botões
     document.getElementById('btn-limpar-todos').addEventListener('click', limparTodosJogos);
@@ -96,107 +113,131 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Botão Conferir
     conferirBtn.addEventListener('click', async () => {
-        if (jogosIncluidos.length === 0) {
-            alert('Inclua pelo menos um jogo antes de conferir!');
+    if (jogosIncluidos.length === 0) {
+        alert('Inclua pelo menos um jogo antes de conferir!');
+        return;
+    }
+
+    const inicio = document.getElementById('inicio').value;
+    const fim = document.getElementById('fim').value;
+
+    if (!inicio || !fim || parseInt(inicio) > parseInt(fim)) {
+        alert('Verifique os números dos concursos!');
+        return;
+    }
+
+    overlay.style.display = 'flex';
+    document.querySelector('.progress-text').textContent = 'Conferindo jogos...';
+
+    conferenciaCancelada = false;
+
+    try {
+        const response = await fetch('/conferir', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                inicio: parseInt(inicio),
+                fim: parseInt(fim),
+                jogos: jogosIncluidos
+            })
+        });
+
+        if (conferenciaCancelada) {
             return;
         }
 
-        const inicio = document.getElementById('inicio').value;
-        const fim = document.getElementById('fim').value;
+        const data = await response.json();
 
-        if (!inicio || !fim || parseInt(inicio) > parseInt(fim)) {
-            alert('Verifique os números dos concursos!');
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        if (data.message) {
+            alert(data.message);
             return;
         }
 
-        overlay.style.display = 'flex';
-        document.querySelector('.progress-text').textContent = 'Conferindo jogos...';
+        // Atualizar contagens
+        document.getElementById('quatro-acertos').textContent = data.resumo.quatro;
+        document.getElementById('cinco-acertos').textContent = data.resumo.cinco;
+        document.getElementById('seis-acertos').textContent = data.resumo.seis;
 
-        try {
-            const response = await fetch('/conferir', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    inicio: parseInt(inicio),
-                    fim: parseInt(fim),
-                    jogos: jogosIncluidos
-                })
+        // Atualizar valores em reais
+        let valorQuadra = 0, valorQuina = 0, valorSena = 0;
+
+        if (data.acertos) {
+            data.acertos.forEach(resultado => {
+                if (resultado.acertos === 4) valorQuadra += resultado.premio;
+                if (resultado.acertos === 5) valorQuina += resultado.premio;
+                if (resultado.acertos === 6) valorSena += resultado.premio;
             });
-
-            const data = await response.json();
-
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            if (data.message) {
-                alert(data.message);
-                return;
-            }
-
-            // Atualizar contagens
-            document.getElementById('quatro-acertos').textContent = data.resumo.quatro;
-            document.getElementById('cinco-acertos').textContent = data.resumo.cinco;
-            document.getElementById('seis-acertos').textContent = data.resumo.seis;
-
-            // Atualizar detalhes
-            const detalhesDiv = document.getElementById('detalhes-resultados');
-            detalhesDiv.innerHTML = '';
-
-            if (data.acertos && data.acertos.length > 0) {
-                data.acertos.forEach(resultado => {
-                    const resultadoDiv = document.createElement('div');
-                    resultadoDiv.className = 'resultado-item';
-                    resultadoDiv.innerHTML = `
-                        <div class="resultado-header">
-                            <h3>Concurso ${resultado.concurso} - ${resultado.data}</h3>
-                            <p>${resultado.local || ''}</p>
-                        </div>
-                        <div class="resultado-numeros">
-                            <div class="numeros-sorteados">
-                                <h4>Números Sorteados:</h4>
-                                <div class="numeros-lista">
-                                    ${resultado.numeros_sorteados
-                                        .sort((a, b) => a - b)
-                                        .map(n => `<span class="numero-sorteado">${String(n).padStart(2, '0')}</span>`)
-                                        .join(' ')}
-                                </div>
-                            </div>
-                            <div class="seu-jogo">
-                                <h4>Seu Jogo:</h4>
-                                <div class="numeros-lista">
-                                    ${resultado.seus_numeros
-                                        .sort((a, b) => a - b)
-                                        .map(n => `<span class="numero-jogado ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
-                                        .join(' ')}
-                                </div>
-                            </div>
-                            <div class="resultado-info">
-                                <p class="acertos-info">Acertos: <strong>${resultado.acertos}</strong></p>
-                                ${resultado.premio > 0 ? 
-                                    `<p class="premio-info">Prêmio: <strong>R$ ${resultado.premio.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></p>` 
-                                    : ''}
-                            </div>
-                        </div>
-                    `;
-                    detalhesDiv.appendChild(resultadoDiv);
-                });
-            } else {
-                detalhesDiv.innerHTML = '<p class="sem-resultados">Nenhum prêmio encontrado para os jogos conferidos.</p>';
-            }
-
-            if (confirm('Deseja limpar os jogos conferidos?')) {
-                limparTodosJogos();
-            }
-
-        } catch (error) {
-            console.error('Erro detalhado:', error);
-            alert(`Erro ao conferir jogos: ${error.message}`);
-        } finally {
-            overlay.style.display = 'none';
         }
+
+        document.getElementById('quatro-valor').textContent =
+            `R$ ${valorQuadra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        document.getElementById('cinco-valor').textContent =
+            `R$ ${valorQuina.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        document.getElementById('seis-valor').textContent =
+            `R$ ${valorSena.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+        // Atualizar detalhes
+        const detalhesDiv = document.getElementById('detalhes-resultados');
+        detalhesDiv.innerHTML = '';
+
+        if (data.acertos && data.acertos.length > 0) {
+            data.acertos.forEach(resultado => {
+                const resultadoDiv = document.createElement('div');
+                resultadoDiv.className = 'resultado-item';
+                resultadoDiv.innerHTML = `
+                    <div class="resultado-header">
+                        <h3>Concurso ${resultado.concurso} - ${resultado.data}</h3>
+                        <p>${resultado.local || ''}</p>
+                    </div>
+                    <div class="resultado-numeros">
+                        <div class="numeros-sorteados">
+                            <h4>Números Sorteados:</h4>
+                            <div class="numeros-lista">
+                                ${resultado.numeros_sorteados
+                                    .sort((a, b) => a - b)
+                                    .map(n => `<span class="numero-sorteado">${String(n).padStart(2, '0')}</span>`)
+                                    .join(' ')}
+                            </div>
+                        </div>
+                        <div class="seu-jogo">
+                            <h4>Seu Jogo:</h4>
+                            <div class="numeros-lista">
+                                ${resultado.seus_numeros
+                                    .sort((a, b) => a - b)
+                                    .map(n => `<span class="numero-jogado ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
+                                    .join(' ')}
+                            </div>
+                        </div>
+                        <div class="resultado-info">
+                            <p class="acertos-info">Acertos: <strong>${resultado.acertos}</strong></p>
+                            ${resultado.premio > 0 ? 
+                                `<p class="premio-info">Prêmio: <strong>R$ ${resultado.premio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>` 
+                                : ''}
+                        </div>
+                    </div>
+                `;
+                detalhesDiv.appendChild(resultadoDiv);
+            });
+        } else {
+            detalhesDiv.innerHTML = '<p class="sem-resultados">Nenhum prêmio encontrado para os jogos conferidos.</p>';
+        }
+
+        if (confirm('Deseja limpar os jogos conferidos?')) {
+            limparTodosJogos();
+        }
+
+    } catch (error) {
+        console.error('Erro detalhado:', error);
+        alert(`Erro ao conferir jogos: ${error.message}`);
+    } finally {
+        overlay.style.display = 'none';
+    }
     });
 });
 
@@ -381,7 +422,11 @@ function removerJogosSelecionados() {
                 JSON.stringify(j) === jogoStr
             );
             if (index !== -1) {
-                jogosIncluidos.splice(index,jogosIncluidos.splice(index, 1));
+                // Errado
+                //jogosIncluidos.splice(index,jogosIncluidos.splice(index, 1));
+
+                // Correto
+                jogosIncluidos.splice(index, 1);
             }
         });
 

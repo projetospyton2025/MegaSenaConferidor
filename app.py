@@ -3,6 +3,7 @@ from flask import Flask, render_template, request, jsonify
 import requests
 from datetime import datetime
 import os
+import random  # Adicione esta linha
 
 app = Flask(__name__)
 

@@ -48,16 +48,7 @@
             <button id="limpar" class="btn btn-vermelho">Limpar</button>
             <button id="sugestao" class="btn btn-roxo">Palpite</button>
             <button id="conferir" class="btn btn-verde">Conferir</button>
-            <!--BOTÃO TESTE NO HTML - EXCLUA SE NÃO QUISER MAIS-->
-            <button id="btn-teste" class="btn btn-roxo">Gerar Teste</button>
         </div>
-<!--
-        <div class="jogos-incluidos">
-            <h3>Jogos Incluídos</h3>
-            <div id="lista-jogos" class="lista-jogos"></div>
-        </div>
-
--->
         <div class="jogos-incluidos">
             <h3>Jogos Incluídos (<span id="contador-jogos">0</span> jogos)</h3>
             <div id="lista-jogos" class="lista-jogos"></div>
@@ -73,12 +64,15 @@
             </button>
         </div>
 
+        <!--Caixa que aparece quando o botão conferir é clicado-->
         <div id="overlay" class="overlay" style="display: none;">
             <div class="progress">
                 <div class="progress-bar"></div>
                 <div class="progress-text">Conferindo jogos...</div>
+                <button id="btn-cancelar-conferencia" class="btn-cancelar">Cancelar Conferência</button>
             </div>
         </div>
+
 
         <div class="resultados">
             <h2>Resumo de acertos</h2>
@@ -86,14 +80,17 @@
                 <div class="card">
                     <h3>4 Acertos</h3>
                     <p class="contagem" id="quatro-acertos">0</p>
+                    <p class="valor-premio" id="quatro-valor">R$ 0,00</p>
                 </div>
                 <div class="card">
                     <h3>5 Acertos</h3>
                     <p class="contagem" id="cinco-acertos">0</p>
+                    <p class="valor-premio" id="cinco-valor">R$ 0,00</p>
                 </div>
                 <div class="card">
                     <h3>6 Acertos</h3>
                     <p class="contagem" id="seis-acertos">0</p>
+                    <p class="valor-premio" id="seis-valor">R$ 0,00</p>
                 </div>
             </div>
             <div id="detalhes-resultados" class="detalhes-resultados"></div>

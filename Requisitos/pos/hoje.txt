@@ -1,3 +1,20 @@
+Faça estas 4 melhorias
+1 - Os resultados eu quero que seja mostrado um ao lado do outro...
+quero tbm
+2 - Um RESUMO dos valores ganho (DEVE SER mostrado abaixo do 4 Acertos, 5 Acertos e 6 Acertos em vermelho)
+3 - E tbm para o mesmo RESUMO eu quero que venha as seguintes informações em forma de tabela..
+Concurso
+Numeros sorteados
+Meu jogo 
+Acertos
+Valor do prêmio (com um total geral)
+4 - Adicionar um botão cancelar conferência
+
+OBS: NÃO ALTERA NADA NO CÓDIGO, DEIXE O INTACTO, NADA MESMO, LOGICA, ORDEM ETC.
+APENAS IMPLEMENTE O QUE EU PEDI.. APENAS ISSO OK.. POR FAVOR
+
+
+
 # Project Structure:
 MegaSenaConferidor/
 ├── requirements.txt
@@ -202,16 +219,16 @@ def processar_arquivo():
         return jsonify({'error': str(e)}), 500
 
 
+"""
 if __name__ == '__main__':
      app.run(debug=True)
-
-
 """
+
+
      # Agora a parte de configuração da porta
 if __name__ == '__main__':
      port = int(os.environ.get("PORT", 5000))  # Obtém a porta do ambiente ou usa 5000 como padrão
      app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
-"""
 
 
 // Variáveis globais
@@ -723,6 +740,7 @@ function atualizarBotoesSeleção() {
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
+
 :root {
     --primary-color: #008751;
     --secondary-color: #005c36;
