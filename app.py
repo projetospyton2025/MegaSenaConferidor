@@ -1,13 +1,17 @@
 # app.py
 # Valores que podem ser alterados... 
 
-"""
+""" MAIN.JS
 // Adicione esta validação
-    if (fim - inicio > 100) { // O NUMERO 100 PODE SER ALTERADO 
-        alert('Por favor, consulte no máximo 100 concursos por vez para evitar sobrecarga.');
-        return;
+    const intervalo = fim - inicio;
+    if (intervalo > 100) { //Conferência de no máximo 100 por vez
+        const confirmacao = confirm('Para melhor desempenho, recomendamos conferir no máximo 100 concursos por vez. Deseja continuar mesmo assim?');
+        if (!confirmacao) {
+            return;
+        }
     }
 
+// APP.PY
 # Ordena as estatísticas de jogos
         jogos_stats_ordenados = sorted(
             [{'numeros': stats['numeros'], 
@@ -75,11 +79,6 @@ def conferir():
         fim = int(data['fim'])
         jogos = data['jogos']
 
-        # Validação adicional do intervalo
-        if fim - inicio > 100:  # Limita a 100 concursos por vez
-            return jsonify({
-                'error': 'Por favor, consulte no máximo 100 concursos por vez para evitar sobrecarga.'
-            }), 400
 
         print(f"\nIniciando conferência de {len(jogos)} jogos")
         print(f"Período: concurso {inicio} até {fim}")

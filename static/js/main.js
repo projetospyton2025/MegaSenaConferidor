@@ -127,10 +127,14 @@ conferirBtn.addEventListener('click', async () => {
     }
 
     // Adicione esta validação
-    if (fim - inicio > 100) { // O NUMERO 100 PODE SER ALTERADO 
-        alert('Por favor, consulte no máximo 100 concursos por vez para evitar sobrecarga.');
-        return;
+    const intervalo = fim - inicio;
+    if (intervalo > 100) { //Conferência de no máximo 100 por vez
+        const confirmacao = confirm('Para melhor desempenho, recomendamos conferir no máximo 100 concursos por vez. Deseja continuar mesmo assim?');
+        if (!confirmacao) {
+            return;
+        }
     }
+
 
     overlay.style.display = 'flex';
     document.querySelector('.progress-text').textContent = 'Conferindo jogos...';
