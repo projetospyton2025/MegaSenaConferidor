@@ -23,7 +23,32 @@ Werkzeug==2.0.3
 requests==2.26.0
 python-dotenv==0.19.0
 
+
 # app.py
+# Valores que podem ser alterados... 
+
+""" MAIN.JS
+// Adicione esta validação
+    const intervalo = fim - inicio;
+    if (intervalo > 100) { //Conferência de no máximo 100 por vez
+        const confirmacao = confirm('Para melhor desempenho, recomendamos conferir no máximo 100 concursos por vez. Deseja continuar mesmo assim?');
+        if (!confirmacao) {
+            return;
+        }
+    }
+
+// APP.PY
+# Ordena as estatísticas de jogos
+        jogos_stats_ordenados = sorted(
+            [{'numeros': stats['numeros'], 
+              'total': stats['total'], 
+              'distribuicao': stats['distribuicao']} 
+             for stats in jogos_stats.values()],
+            key=lambda x: x['total'],
+            reverse=True
+        )[:10]  # Retorna apenas os 10 mais frequentes
+"""
+
 from flask import Flask, render_template, request, jsonify
 import requests
 from datetime import datetime
@@ -80,6 +105,7 @@ def conferir():
         fim = int(data['fim'])
         jogos = data['jogos']
 
+
         print(f"\nIniciando conferência de {len(jogos)} jogos")
         print(f"Período: concurso {inicio} até {fim}")
         print(f"Jogos recebidos: {jogos}\n")
@@ -101,15 +127,34 @@ def conferir():
             try:
                 print(f"\nVerificando concurso {concurso}:")
                 response = requests.get(f"{API_BASE_URL}/megasena/{concurso}", timeout=5)
-                
-                if response.status_code != 200:
+
+                # Melhor tratamento de erros HTTP
+                if response.status_code == 404:
+                    print(f"Concurso {concurso} não encontrado")
+                    continue
+                elif response.status_code == 429:
+                    return jsonify({
+                        'error': 'Muitas requisições. Por favor, aguarde alguns minutos e tente novamente.'
+                    }), 429
+                elif response.status_code != 200:
                     print(f"Erro ao buscar concurso {concurso}: Status {response.status_code}")
                     continue
 
-                resultado = response.json()
+                # Verifica se é realmente JSON antes de decodificar
+                content_type = response.headers.get('content-type', '')
+                if 'application/json' not in content_type.lower():
+                    print(f"Resposta inesperada do servidor para concurso {concurso}")
+                    continue
+
+                try:
+                    resultado = response.json()
+                except ValueError:
+                    print(f"Resposta inválida do servidor para concurso {concurso}")
+                    continue
+
                 dezenas = [int(d) for d in resultado['dezenas']]
                 print(f"Dezenas sorteadas: {dezenas}")
-                
+
                 # Verifica cada jogo contra este concurso
                 for idx, jogo in enumerate(jogos):
                     print(f"\nJogo {idx + 1}: {jogo}")
@@ -119,7 +164,7 @@ def conferir():
                     # Registra estatísticas para qualquer acerto
                     if acertos > 0:
                         jogos_stats = atualizar_estatisticas_jogo(jogos_stats, jogo, acertos)
-                    
+
                     if acertos >= 4:
                         premio = 0
                         for premiacao in resultado['premiacoes']:
@@ -128,7 +173,7 @@ def conferir():
                                 (acertos == 4 and premiacao['descricao'] == '4 acertos')):
                                 premio = premiacao['valorPremio']
                                 break
-                        
+
                         if acertos == 4:
                             resultados['resumo']['quatro'] += 1
                         elif acertos == 5:
@@ -147,6 +192,12 @@ def conferir():
                         })
                         print(f"Prêmio encontrado! {acertos} acertos")
 
+            except requests.exceptions.Timeout:
+                print(f"Timeout ao buscar concurso {concurso}")
+                continue
+            except requests.exceptions.RequestException as e:
+                print(f"Erro de rede ao buscar concurso {concurso}: {str(e)}")
+                continue
             except Exception as e:
                 print(f"Erro ao processar concurso {concurso}: {str(e)}")
                 continue
@@ -178,7 +229,6 @@ def conferir():
     except Exception as e:
         print(f"Erro geral: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
 
 
 # Adicione esta função ao seu app.py
@@ -249,7 +299,6 @@ if __name__ == '__main__':
 if __name__ == '__main__':
      port = int(os.environ.get("PORT", 5000))  # Obtém a porta do ambiente ou usa 5000 como padrão
      app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
-
 
 // Variáveis globais
 const jogosIncluidos = [];
@@ -363,7 +412,8 @@ document.addEventListener('DOMContentLoaded', function() {
         alert('1 jogo foi incluído com sucesso!');
         limparBtn.click();
     });
-// Botão Conferir
+
+   // Botão Conferir
 conferirBtn.addEventListener('click', async () => {
     if (jogosIncluidos.length === 0) {
         alert('Inclua pelo menos um jogo antes de conferir!');
@@ -377,6 +427,16 @@ conferirBtn.addEventListener('click', async () => {
         alert('Verifique os números dos concursos!');
         return;
     }
+
+    // Adicione esta validação
+    const intervalo = fim - inicio;
+    if (intervalo > 100) { //Conferência de no máximo 100 por vez
+        const confirmacao = confirm('Para melhor desempenho, recomendamos conferir no máximo 100 concursos por vez. Deseja continuar mesmo assim?');
+        if (!confirmacao) {
+            return;
+        }
+    }
+
 
     overlay.style.display = 'flex';
     document.querySelector('.progress-text').textContent = 'Conferindo jogos...';
@@ -396,11 +456,17 @@ conferirBtn.addEventListener('click', async () => {
             })
         });
 
-        if (conferenciaCancelada) {
-            return;
+        // Novo trecho de tratamento da resposta (adicionado do código2)
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Erro ao conferir jogos');
         }
 
         const data = await response.json();
+
+        if (conferenciaCancelada) {
+            return;
+        }
 
         if (data.error) {
             throw new Error(data.error);
@@ -529,22 +595,28 @@ conferirBtn.addEventListener('click', async () => {
 
         // Atualização da tabela de jogos sorteados
         if (data.jogos_stats) {
+            console.log('Dados recebidos para tabela de jogos mais sorteados:', data.jogos_stats);
             atualizarTabelaJogosSorteados(data.jogos_stats);
         }
 
-        //Confirmação para limpar jogos
+        // Confirmação para limpar jogos
         if (confirm('Deseja limpar os jogos conferidos?')) {
             limparTodosJogos();
         }
 
     } catch (error) {
         console.error('Erro detalhado:', error);
-        alert(`Erro ao conferir jogos: ${error.message}`);
+        // Tratamento adicional para mensagens de erro (adicionado do código2)
+        if (error.message.includes('<!DOCTYPE')) {
+            alert('O serviço está temporariamente indisponível. Por favor, tente novamente mais tarde ou reduza o intervalo de concursos.');
+        } else {
+            alert(error.message);
+        }
     } finally {
         overlay.style.display = 'none';
     }
-  });
-
+});
+ 
 // Funções de Drag and Drop
 function setupDragAndDrop() {
     const dropZone = document.getElementById('drop-zone');
@@ -790,7 +862,10 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
         tr.appendChild(tdDistribuicao);
         tbody.appendChild(tr);
     });
-}<!DOCTYPE html>
+}
+
+});
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -1170,7 +1245,7 @@ body {
 }
 
 .btn-azul {
-    background-color: #007bff;
+    background-color: #007bff; 
     color: white;
 }
 
@@ -1603,3 +1678,5 @@ body {
     margin: 2px;
     font-size: 0.9em;
 }
+
+
