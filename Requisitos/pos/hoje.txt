@@ -1,4 +1,9 @@
-
+Jogo 1: [3, 5, 13, 26, 35, 44]
+Acertos encontrados: 0
+Erro ao buscar cache para concurso 17
+Cache miss para concurso 17
+Erro ao armazenar cache para concurso 17
+Dezenas sorteadas: [6, 10, 13, 19, 20, 51]
 
 
 
@@ -18,10 +23,14 @@ MegaSenaConferidor/
 
 
 # requirements.txt
-flask==2.0.3
+#flask==2.0.3 novo
+flask[async]
 Werkzeug==2.0.3
 requests==2.26.0
 python-dotenv==0.19.0
+aiohttp --only-binary=:all: # Para requisições assíncronas novo
+asyncio==3.4.3 # Para processar múltiplas requisições novo
+redis #novo
 
 
 # app.py
@@ -36,6 +45,10 @@ python-dotenv==0.19.0
             return;
         }
     }
+
+   // Adicione esta validação
+    const intervalo = fim - inicio;
+    if (intervalo > 3000) { //Conferência de no máximo 3000 por vez 
 
 // APP.PY
 # Ordena as estatísticas de jogos
@@ -54,6 +67,41 @@ import requests
 from datetime import datetime
 import os
 import random  # Adicione esta linha
+import aiohttp
+import asyncio
+import redis
+import json
+
+
+
+
+
+# Configuração do Redis
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
+
+# Funções auxiliares para o cache
+def get_cached_result(concurso):
+    """Tenta obter resultado do cache"""
+    try:
+        cached = redis_client.get(f"megasena:{concurso}")
+        if cached:
+            return json.loads(cached)
+    except:
+        print(f"Erro ao buscar cache para concurso {concurso}")
+    return None
+
+def set_cached_result(concurso, data):
+    """Armazena resultado no cache"""
+    try:
+        redis_client.setex(
+            f"megasena:{concurso}",
+            CACHE_EXPIRATION,
+            json.dumps(data)
+        )
+    except:
+        print(f"Erro ao armazenar cache para concurso {concurso}")
+
 
 app = Flask(__name__)
 
@@ -97,6 +145,8 @@ def gerar_numeros():
 
 
 
+
+
 @app.route('/conferir', methods=['POST'])
 def conferir():
     try:
@@ -105,10 +155,8 @@ def conferir():
         fim = int(data['fim'])
         jogos = data['jogos']
 
-
         print(f"\nIniciando conferência de {len(jogos)} jogos")
         print(f"Período: concurso {inicio} até {fim}")
-        print(f"Jogos recebidos: {jogos}\n")
 
         resultados = {
             'acertos': [],
@@ -119,49 +167,41 @@ def conferir():
             }
         }
 
-        # Inicializa o dicionário de estatísticas
         jogos_stats = {}
 
-        # Verifica cada concurso
         for concurso in range(inicio, fim + 1):
             try:
-                print(f"\nVerificando concurso {concurso}:")
-                response = requests.get(f"{API_BASE_URL}/megasena/{concurso}", timeout=5)
+                # Tenta buscar do cache primeiro
+                resultado = get_cached_result(concurso)
+                
+                # Se não está no cache, busca da API
+                if not resultado:
+                    print(f"Cache miss para concurso {concurso}")
+                    response = requests.get(f"{API_BASE_URL}/megasena/{concurso}", timeout=5)
+                    
+                    if response.status_code != 200:
+                        print(f"Erro ao buscar concurso {concurso}: Status {response.status_code}")
+                        continue
 
-                # Melhor tratamento de erros HTTP
-                if response.status_code == 404:
-                    print(f"Concurso {concurso} não encontrado")
-                    continue
-                elif response.status_code == 429:
-                    return jsonify({
-                        'error': 'Muitas requisições. Por favor, aguarde alguns minutos e tente novamente.'
-                    }), 429
-                elif response.status_code != 200:
-                    print(f"Erro ao buscar concurso {concurso}: Status {response.status_code}")
-                    continue
-
-                # Verifica se é realmente JSON antes de decodificar
-                content_type = response.headers.get('content-type', '')
-                if 'application/json' not in content_type.lower():
-                    print(f"Resposta inesperada do servidor para concurso {concurso}")
-                    continue
-
-                try:
-                    resultado = response.json()
-                except ValueError:
-                    print(f"Resposta inválida do servidor para concurso {concurso}")
-                    continue
+                    try:
+                        resultado = response.json()
+                        # Armazena no cache
+                        set_cached_result(concurso, resultado)
+                    except ValueError:
+                        print(f"Resposta inválida do servidor para concurso {concurso}")
+                        continue
+                else:
+                    print(f"Cache hit para concurso {concurso}")
 
                 dezenas = [int(d) for d in resultado['dezenas']]
                 print(f"Dezenas sorteadas: {dezenas}")
 
-                # Verifica cada jogo contra este concurso
+                # Resto do código permanece igual...
                 for idx, jogo in enumerate(jogos):
                     print(f"\nJogo {idx + 1}: {jogo}")
                     acertos = len(set(jogo) & set(dezenas))
                     print(f"Acertos encontrados: {acertos}")
 
-                    # Registra estatísticas para qualquer acerto
                     if acertos > 0:
                         jogos_stats = atualizar_estatisticas_jogo(jogos_stats, jogo, acertos)
 
@@ -190,19 +230,12 @@ def conferir():
                             'acertos': acertos,
                             'premio': premio
                         })
-                        print(f"Prêmio encontrado! {acertos} acertos")
 
-            except requests.exceptions.Timeout:
-                print(f"Timeout ao buscar concurso {concurso}")
-                continue
-            except requests.exceptions.RequestException as e:
-                print(f"Erro de rede ao buscar concurso {concurso}: {str(e)}")
-                continue
             except Exception as e:
                 print(f"Erro ao processar concurso {concurso}: {str(e)}")
                 continue
 
-        # Ordena as estatísticas de jogos
+        # O resto do código permanece igual...
         jogos_stats_ordenados = sorted(
             [{'numeros': stats['numeros'], 
               'total': stats['total'], 
@@ -210,9 +243,8 @@ def conferir():
              for stats in jogos_stats.values()],
             key=lambda x: x['total'],
             reverse=True
-        )[:10]  # Retorna apenas os 10 mais frequentes
+        )[:10]
 
-        # Modifica o retorno para incluir jogos_stats
         if not resultados['acertos']:
             return jsonify({
                 'message': 'Nenhum prêmio encontrado nos concursos verificados',
@@ -229,6 +261,7 @@ def conferir():
     except Exception as e:
         print(f"Erro geral: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
 
 
 # Adicione esta função ao seu app.py
@@ -289,6 +322,8 @@ def processar_arquivo():
         return jsonify({'error': str(e)}), 500
 
 
+
+
 """
 if __name__ == '__main__':
      app.run(debug=True)
@@ -299,6 +334,13 @@ if __name__ == '__main__':
 if __name__ == '__main__':
      port = int(os.environ.get("PORT", 5000))  # Obtém a porta do ambiente ou usa 5000 como padrão
      app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
+
+"""
+     # Agora a parte de configuração da porta
+if __name__ == '__main__':
+     port = int(os.environ.get("PORT", 10000))  # Obtém a porta do ambiente ou usa 5000 como padrão
+     app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
+"""
 
 // Variáveis globais
 const jogosIncluidos = [];
@@ -414,6 +456,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
    // Botão Conferir
+// Botão Conferir
 conferirBtn.addEventListener('click', async () => {
     if (jogosIncluidos.length === 0) {
         alert('Inclua pelo menos um jogo antes de conferir!');
@@ -430,183 +473,189 @@ conferirBtn.addEventListener('click', async () => {
 
     // Adicione esta validação
     const intervalo = fim - inicio;
-    if (intervalo > 100) { //Conferência de no máximo 100 por vez
-        const confirmacao = confirm('Para melhor desempenho, recomendamos conferir no máximo 100 concursos por vez. Deseja continuar mesmo assim?');
+    if (intervalo > 3000) { //Conferência de no máximo 3000 por vez
+        const confirmacao = confirm('Para melhor desempenho, recomendamos conferir no máximo 3000 concursos por vez. Deseja continuar mesmo assim?');
         if (!confirmacao) {
             return;
         }
     }
-
 
     overlay.style.display = 'flex';
     document.querySelector('.progress-text').textContent = 'Conferindo jogos...';
 
     conferenciaCancelada = false;
 
+    const LOTE_TAMANHO = 3000; // Tamanho máximo de cada lote
+    let lotesProcessados = [];
+
+    if (intervalo > LOTE_TAMANHO) {
+        for (let i = inicio; i <= fim; i += LOTE_TAMANHO) {
+            const loteFim = Math.min(i + LOTE_TAMANHO - 1, fim);
+            lotesProcessados.push({inicio: i, fim: loteFim});
+        }
+    } else {
+        lotesProcessados.push({inicio, fim});
+    }
+
     try {
-        const response = await fetch('/conferir', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                inicio: parseInt(inicio),
-                fim: parseInt(fim),
-                jogos: jogosIncluidos
-            })
-        });
-
-        // Novo trecho de tratamento da resposta (adicionado do código2)
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro ao conferir jogos');
-        }
-
-        const data = await response.json();
-
-        if (conferenciaCancelada) {
-            return;
-        }
-
-        if (data.error) {
-            throw new Error(data.error);
-        }
-
-        if (data.message) {
-            alert(data.message);
-            return;
-        }
-
-        // Atualizar contagens
-        document.getElementById('quatro-acertos').textContent = data.resumo.quatro;
-        document.getElementById('cinco-acertos').textContent = data.resumo.cinco;
-        document.getElementById('seis-acertos').textContent = data.resumo.seis;
-
-        // Atualizar valores em reais
-        let valorQuadra = 0, valorQuina = 0, valorSena = 0;
-        let temQuadra = false, temQuina = false, temSena = false;
-
-        if (data.acertos) {
-            data.acertos.forEach(resultado => {
-                if (resultado.acertos === 4) {
-                    valorQuadra += resultado.premio;
-                    temQuadra = true;
-                }
-                if (resultado.acertos === 5) {
-                    valorQuina += resultado.premio;
-                    temQuina = true;
-                }
-                if (resultado.acertos === 6) {
-                    valorSena += resultado.premio;
-                    temSena = true;
-                }
+        for (const lote of lotesProcessados) {
+            const response = await fetch('/conferir', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    inicio: lote.inicio,
+                    fim: lote.fim,
+                    jogos: jogosIncluidos
+                })
             });
-        }
 
-        // Atualiza os valores nos cartões
-        document.getElementById('quatro-valor').textContent = temQuadra && valorQuadra > 0 ? 
-        `R$ ${valorQuadra.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-        'Não houve ganhadores';
+            // Novo trecho de tratamento da resposta (adicionado do código2)
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Erro ao conferir jogos');
+            }
 
-        document.getElementById('cinco-valor').textContent = temQuina && valorQuina > 0 ? 
-        `R$ ${valorQuina.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-        'Não houve ganhadores';
+            const data = await response.json();
 
-        document.getElementById('seis-valor').textContent = temSena && valorSena > 0 ? 
-        `R$ ${valorSena.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-        'Não houve ganhadores';
+            if (conferenciaCancelada) {
+                return;
+            }
 
-        // Atualizar detalhes visuais
-        const detalhesDiv = document.getElementById('detalhes-resultados');
-        detalhesDiv.innerHTML = '';
+            if (data.error) {
+                throw new Error(data.error);
+            }
 
-        const tabelaBody = document.getElementById('tabela-resultados');
-        tabelaBody.innerHTML = ''; // Limpa a tabela
+            if (data.message) {
+                alert(data.message);
+                return;
+            }
 
-        // Processamento dos resultados
-        if (data.acertos && data.acertos.length > 0) {
-            data.acertos.forEach(resultado => {
-                // Adicionar na seção de detalhes
-                const resultadoDiv = document.createElement('div');
-                resultadoDiv.className = 'resultado-item';
-                resultadoDiv.innerHTML = `
-                    <div class="resultado-header">
-                        <h3>Concurso ${resultado.concurso} - ${resultado.data}</h3>
-                        <p>${resultado.local || ''}</p>
-                    </div>
-                    <div class="resultado-numeros">
-                        <div class="numeros-sorteados">
-                            <h4>Números Sorteados:</h4>
-                            <div class="numeros-lista">
-                                ${resultado.numeros_sorteados
-                                    .sort((a, b) => a - b)
-                                    .map(n => `<span class="numero-sorteado">${String(n).padStart(2, '0')}</span>`)
-                                    .join(' ')}
+            // Atualizar contagens
+            document.getElementById('quatro-acertos').textContent = data.resumo.quatro;
+            document.getElementById('cinco-acertos').textContent = data.resumo.cinco;
+            document.getElementById('seis-acertos').textContent = data.resumo.seis;
+
+            // Atualizar valores em reais
+            let valorQuadra = 0, valorQuina = 0, valorSena = 0;
+            let temQuadra = false, temQuina = false, temSena = false;
+
+            if (data.acertos) {
+                data.acertos.forEach(resultado => {
+                    if (resultado.acertos === 4) {
+                        valorQuadra += resultado.premio;
+                        temQuadra = true;
+                    }
+                    if (resultado.acertos === 5) {
+                        valorQuina += resultado.premio;
+                        temQuina = true;
+                    }
+                    if (resultado.acertos === 6) {
+                        valorSena += resultado.premio;
+                        temSena = true;
+                    }
+                });
+            }
+
+            // Atualiza os valores nos cartões
+            document.getElementById('quatro-valor').textContent = temQuadra && valorQuadra > 0 ? 
+            `R$ ${valorQuadra.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+            'Não houve ganhadores';
+
+            document.getElementById('cinco-valor').textContent = temQuina && valorQuina > 0 ? 
+            `R$ ${valorQuina.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+            'Não houve ganhadores';
+
+            document.getElementById('seis-valor').textContent = temSena && valorSena > 0 ? 
+            `R$ ${valorSena.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+            'Não houve ganhadores';
+
+            // Atualizar detalhes visuais
+            const detalhesDiv = document.getElementById('detalhes-resultados');
+            detalhesDiv.innerHTML = '';
+
+            const tabelaBody = document.getElementById('tabela-resultados');
+            tabelaBody.innerHTML = ''; // Limpa a tabela
+
+            // Processamento dos resultados
+            if (data.acertos && data.acertos.length > 0) {
+                data.acertos.forEach(resultado => {
+                    // Adicionar na seção de detalhes
+                    const resultadoDiv = document.createElement('div');
+                    resultadoDiv.className = 'resultado-item';
+                    resultadoDiv.innerHTML = `
+                        <div class="resultado-header">
+                            <h3>Concurso ${resultado.concurso} - ${resultado.data}</h3>
+                            <p>${resultado.local || ''}</p>
+                        </div>
+                        <div class="resultado-numeros">
+                            <div class="numeros-sorteados">
+                                <h4>Números Sorteados:</h4>
+                                <div class="numeros-lista">
+                                    ${resultado.numeros_sorteados
+                                        .sort((a, b) => a - b)
+                                        .map(n => `<span class="numero-sorteado">${String(n).padStart(2, '0')}</span>`)
+                                        .join(' ')}
+                                </div>
+                            </div>
+                            <div class="seu-jogo">
+                                <h4>Seu Jogo:</h4>
+                                <div class="numeros-lista">
+                                    ${resultado.seus_numeros
+                                        .sort((a, b) => a - b)
+                                        .map(n => `<span class="numero-jogado ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
+                                        .join(' ')}
+                                </div>
+                            </div>
+                            <div class="resultado-info">
+                                <p class="acertos-info">Acertos: <strong>${resultado.acertos}</strong></p>
+                                ${resultado.premio > 0 ? 
+                                    `<p class="premio-info">Prêmio: <strong>R$ ${resultado.premio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>` 
+                                    : ''}
                             </div>
                         </div>
-                        <div class="seu-jogo">
-                            <h4>Seu Jogo:</h4>
-                            <div class="numeros-lista">
-                                ${resultado.seus_numeros
-                                    .sort((a, b) => a - b)
-                                    .map(n => `<span class="numero-jogado ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
-                                    .join(' ')}
-                            </div>
-                        </div>
-                        <div class="resultado-info">
-                            <p class="acertos-info">Acertos: <strong>${resultado.acertos}</strong></p>
-                            ${resultado.premio > 0 ? 
-                                `<p class="premio-info">Prêmio: <strong>R$ ${resultado.premio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>` 
-                                : ''}
-                        </div>
-                    </div>
-                `;
-                detalhesDiv.appendChild(resultadoDiv);
+                    `;
+                    detalhesDiv.appendChild(resultadoDiv);
 
-                // Adicionar na tabela
-                const row = document.createElement('tr');
-                const numerosSorteados = resultado.numeros_sorteados
-                    .sort((a, b) => a - b)
-                    .map(n => `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`)
-                    .join('');
-                const seusNumeros = resultado.seus_numeros
-                    .sort((a, b) => a - b)
-                    .map(n => `<span class="numero-tabela ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
-                    .join('');
-                const premioText = resultado.premio > 0 
-                    ? `R$ ${resultado.premio.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` 
-                    : 'Não houve ganhadores';
+                    // Adicionar na tabela
+                    const row = document.createElement('tr');
+                    const numerosSorteados = resultado.numeros_sorteados
+                        .sort((a, b) => a - b)
+                        .map(n => `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`)
+                        .join('');
+                    const seusNumeros = resultado.seus_numeros
+                        .sort((a, b) => a - b)
+                        .map(n => `<span class="numero-tabela ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
+                        .join('');
+                    const premioText = resultado.premio > 0 
+                        ? `R$ ${resultado.premio.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` 
+                        : 'Não houve ganhadores';
 
-                row.innerHTML = `
-                    <td>${resultado.concurso}</td>
-                    <td>${resultado.data}</td>
-                    <td>${resultado.local || '-'}</td>
-                    <td><div class="numeros-tabela">${numerosSorteados}</div></td>
-                    <td><div class="numeros-tabela">${seusNumeros}</div></td>
-                    <td>${resultado.acertos}</td>
-                    <td>${premioText}</td>
-                    <td>${resultado.premio > 0 ? 'Premiado' : 'Acumulado'}</td>
-                `;
-                tabelaBody.appendChild(row);
-            });
-        } else {
-            detalhesDiv.innerHTML = '<p class="sem-resultados">Nenhum prêmio encontrado para os jogos conferidos.</p>';
+                    row.innerHTML = `
+                        <td>${resultado.concurso}</td>
+                        <td>${resultado.data}</td>
+                        <td>${resultado.local || '-'}</td>
+                        <td><div class="numeros-tabela">${numerosSorteados}</div></td>
+                        <td><div class="numeros-tabela">${seusNumeros}</div></td>
+                        <td>${resultado.acertos}</td>
+                        <td>${premioText}</td>
+                        <td>${resultado.premio > 0 ? 'Premiado' : 'Acumulado'}</td>
+                    `;
+                    tabelaBody.appendChild(row);
+                });
+            } else {
+                detalhesDiv.innerHTML = '<p class="sem-resultados">Nenhum prêmio encontrado para os jogos conferidos.</p>';
+            }
+
+            // Atualização da tabela de jogos sorteados
+            if (data.jogos_stats) {
+                console.log('Dados recebidos para tabela de jogos mais sorteados:', data.jogos_stats);
+                atualizarTabelaJogosSorteados(data.jogos_stats);
+            }
         }
-
-        // Atualização da tabela de jogos sorteados
-        if (data.jogos_stats) {
-            console.log('Dados recebidos para tabela de jogos mais sorteados:', data.jogos_stats);
-            atualizarTabelaJogosSorteados(data.jogos_stats);
-        }
-
-        // Confirmação para limpar jogos
-        if (confirm('Deseja limpar os jogos conferidos?')) {
-            limparTodosJogos();
-        }
-
     } catch (error) {
         console.error('Erro detalhado:', error);
-        // Tratamento adicional para mensagens de erro (adicionado do código2)
         if (error.message.includes('<!DOCTYPE')) {
             alert('O serviço está temporariamente indisponível. Por favor, tente novamente mais tarde ou reduza o intervalo de concursos.');
         } else {
@@ -616,6 +665,7 @@ conferirBtn.addEventListener('click', async () => {
         overlay.style.display = 'none';
     }
 });
+
  
 // Funções de Drag and Drop
 function setupDragAndDrop() {
@@ -865,153 +915,6 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
 }
 
 });
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MegaSena Conferidor</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <h1>Conferidor MegaSena</h1>
-        
-        <div class="volante">
-            <h2>Selecione 6 números</h2>
-            <div class="numeros">
-                {% for i in range(1, 61) %}
-                    <button type="button" class="numero" data-numero="{{ i }}">{{ '%02d' % i }}</button>
-                {% endfor %}
-            </div>
-        </div>
-
-        <!--# Adicione este HTML após a div do volante-->
-        <div class="drop-zone" id="drop-zone">
-            <div class="drop-zone-content">
-                <p>Arraste e solte seu arquivo aqui ou clique para selecionar</p>
-                <p class="drop-zone-hint">Arquivos .txt ou .xlsx</p>
-                <input type="file" id="file-input" accept=".txt,.xlsx" hidden>
-            </div>
-        </div>
-
-        <div class="controles">
-            <div class="input-group">
-                <label for="inicio">Concurso Inicial:</label>
-                <input type="number" id="inicio" min="1">
-            </div>
-            <div class="input-group">
-                <label for="fim">Concurso Final:</label>
-                <input type="number" id="fim" min="1" value="{{ ultimo_concurso }}">
-            </div>
-            <div class="checkbox-group">
-                <input type="checkbox" id="somente-premiados">
-                <label for="somente-premiados">Somente premiados</label>
-            </div>
-        </div>
-
-        <div class="acoes">
-            <button id="incluir" class="btn btn-azul">Incluir Jogo</button>
-            <button id="limpar" class="btn btn-vermelho">Limpar</button>
-            <button id="sugestao" class="btn btn-roxo">Palpite</button>
-            <button id="conferir" class="btn btn-verde">Conferir</button>
-        </div>
-        <div class="jogos-incluidos">
-            <h3>Jogos Incluídos (<span id="contador-jogos">0</span> jogos)</h3>
-            <div id="lista-jogos" class="lista-jogos"></div>
-        </div>
-
-         <!-- Elementos adicionados conforme CODIGO-2 -->
-         <div class="acoes-jogos">
-            <button id="btn-remover-selecionados" class="btn-acao" disabled>
-                Remover Selecionados
-            </button>
-            <button id="btn-limpar-todos" class="btn-acao">
-                Limpar Todos
-            </button>
-        </div>
-
-        <!--Caixa que aparece quando o botão conferir é clicado-->
-        <div id="overlay" class="overlay" style="display: none;">
-            <div class="progress">
-                <div class="progress-bar"></div>
-                <div class="progress-text">Conferindo jogos...</div>
-                <button id="btn-cancelar-conferencia" class="btn-cancelar">Cancelar Conferência</button>
-            </div>
-        </div>
-
-
-        <div class="resultados">
-            <h2>Resumo de acertos</h2>
-            <div class="cards">
-                <div class="card">
-                    <h3>4 Acertos</h3>
-                    <p class="contagem" id="quatro-acertos">0</p>
-                    <p class="valor-premio" id="quatro-valor">R$ 0,00</p>
-                </div>
-                <div class="card">
-                    <h3>5 Acertos</h3>
-                    <p class="contagem" id="cinco-acertos">0</p>
-                    <p class="valor-premio" id="cinco-valor">R$ 0,00</p>
-                </div>
-                <div class="card">
-                    <h3>6 Acertos</h3>
-                    <p class="contagem" id="seis-acertos">0</p>
-                    <p class="valor-premio" id="seis-valor">R$ 0,00</p>
-                </div>
-            </div>
-            <div id="detalhes-resultados" class="detalhes-resultados"></div>
-
-            <!--TABELA DE RESUMO DOS RESULTADOS-->
-            <div class="tabela-resumo">
-                <h2>Resumo dos Jogos Premiados</h2>
-                <div class="tabela-container">
-                    <table class="tabela-premios">
-                        <thead>
-                            <tr>
-                                <th>Concurso</th>
-                                <th>Data</th>
-                                <th>Local</th>
-                                <th>Números Sorteados</th>
-                                <th>Seu Jogo</th>
-                                <th>Acertos</th>
-                                <th>Prêmio</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabela-resultados">
-                            <!-- Será preenchido via JavaScript -->
-                        </tbody>
-                        <tfoot id="tabela-totais">
-                            <tr>
-                                <td colspan="6"><strong>Total de Prêmios</strong></td>
-                                <td colspan="2" class="total-premios"></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-            <!-- Adicionar após a div tabela-resumo para trazer a tabela Jogos Mais Sorteados-->
-            <div class="jogos-mais-sorteados">
-                <h2>Jogos Mais Sorteados</h2>
-                <div class="tabela-container">
-                    <table class="tabela-premios" id="tabela-jogos-sorteados">
-                        <thead>
-                            <tr>
-                                <th>Meu Jogo</th>
-                                <th>Total de Acertos</th>
-                                <th>Distribuição</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-</body>
-</html>
 :root {
     --primary-color: #008751;
     --secondary-color: #005c36;
@@ -1678,5 +1581,150 @@ body {
     margin: 2px;
     font-size: 0.9em;
 }
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MegaSena Conferidor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Conferidor MegaSena</h1>
+        
+        <div class="volante">
+            <h2>Selecione 6 números</h2>
+            <div class="numeros">
+                {% for i in range(1, 61) %}
+                    <button type="button" class="numero" data-numero="{{ i }}">{{ '%02d' % i }}</button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!--# Adicione este HTML após a div do volante-->
+        <div class="drop-zone" id="drop-zone">
+            <div class="drop-zone-content">
+                <p>Arraste e solte seu arquivo aqui ou clique para selecionar</p>
+                <p class="drop-zone-hint">Arquivos .txt ou .xlsx</p>
+                <input type="file" id="file-input" accept=".txt,.xlsx" hidden>
+            </div>
+        </div>
+
+        <div class="controles">
+            <div class="input-group">
+                <label for="inicio">Concurso Inicial:</label>
+                <input type="number" id="inicio" min="1">
+            </div>
+            <div class="input-group">
+                <label for="fim">Concurso Final:</label>
+                <input type="number" id="fim" min="1" value="{{ ultimo_concurso }}">
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="somente-premiados">
+                <label for="somente-premiados">Somente premiados</label>
+            </div>
+        </div>
+
+        <div class="acoes">
+            <button id="incluir" class="btn btn-azul">Incluir Jogo</button>
+            <button id="limpar" class="btn btn-vermelho">Limpar</button>
+            <button id="sugestao" class="btn btn-roxo">Palpite</button>
+            <button id="conferir" class="btn btn-verde">Conferir</button>
+        </div>
+        <div class="jogos-incluidos">
+            <h3>Jogos Incluídos (<span id="contador-jogos">0</span> jogos)</h3>
+            <div id="lista-jogos" class="lista-jogos"></div>
+        </div>
+
+         <!-- Elementos adicionados conforme CODIGO-2 -->
+         <div class="acoes-jogos">
+            <button id="btn-remover-selecionados" class="btn-acao" disabled>
+                Remover Selecionados
+            </button>
+            <button id="btn-limpar-todos" class="btn-acao">
+                Limpar Todos
+            </button>
+        </div>
+
+        <!--Caixa que aparece quando o botão conferir é clicado-->
+        <div id="overlay" class="overlay" style="display: none;">
+            <div class="progress">
+                <div class="progress-bar"></div>
+                <div class="progress-text">Conferindo jogos...</div>
+                <button id="btn-cancelar-conferencia" class="btn-cancelar">Cancelar Conferência</button>
+            </div>
+        </div>
 
 
+        <div class="resultados">
+            <h2>Resumo de acertos</h2>
+            <div class="cards">
+                <div class="card">
+                    <h3>4 Acertos</h3>
+                    <p class="contagem" id="quatro-acertos">0</p>
+                    <p class="valor-premio" id="quatro-valor">R$ 0,00</p>
+                </div>
+                <div class="card">
+                    <h3>5 Acertos</h3>
+                    <p class="contagem" id="cinco-acertos">0</p>
+                    <p class="valor-premio" id="cinco-valor">R$ 0,00</p>
+                </div>
+                <div class="card">
+                    <h3>6 Acertos</h3>
+                    <p class="contagem" id="seis-acertos">0</p>
+                    <p class="valor-premio" id="seis-valor">R$ 0,00</p>
+                </div>
+            </div>
+            <div id="detalhes-resultados" class="detalhes-resultados"></div>
+
+            <!--TABELA DE RESUMO DOS RESULTADOS-->
+            <div class="tabela-resumo">
+                <h2>Resumo dos Jogos Premiados</h2>
+                <div class="tabela-container">
+                    <table class="tabela-premios">
+                        <thead>
+                            <tr>
+                                <th>Concurso</th>
+                                <th>Data</th>
+                                <th>Local</th>
+                                <th>Números Sorteados</th>
+                                <th>Seu Jogo</th>
+                                <th>Acertos</th>
+                                <th>Prêmio</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabela-resultados">
+                            <!-- Será preenchido via JavaScript -->
+                        </tbody>
+                        <tfoot id="tabela-totais">
+                            <tr>
+                                <td colspan="6"><strong>Total de Prêmios</strong></td>
+                                <td colspan="2" class="total-premios"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            <!-- Adicionar após a div tabela-resumo para trazer a tabela Jogos Mais Sorteados-->
+            <div class="jogos-mais-sorteados">
+                <h2>Jogos Mais Sorteados</h2>
+                <div class="tabela-container">
+                    <table class="tabela-premios" id="tabela-jogos-sorteados">
+                        <thead>
+                            <tr>
+                                <th>Meu Jogo</th>
+                                <th>Total de Acertos</th>
+                                <th>Distribuição</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
