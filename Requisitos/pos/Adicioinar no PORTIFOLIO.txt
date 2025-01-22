@@ -1,0 +1,76 @@
+---Verificar o Caminho do Perfil
+
+echo $PROFILE
+%SystemRoot%\Users\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1
+
+
+---Criar o Arquivo de Perfil
+
+New-Item -ItemType File -Path $PROFILE -Force
+
+
+---Editar o Arquivo de Perfil
+
+notepad $PROFILE
+
+function activate {
+    param([string]$path = ".\venv\Scripts\Activate")
+    if (Test-Path $path) {
+        & $path
+    } else {
+        Write-Host "O caminho para o ambiente virtual não foi encontrado: $path" -ForegroundColor Red
+    }
+}
+
+---Carregar o Perfil (no pw)
+
+. $PROFILE
+
+
+
+---Testar a Função activate
+Navegue até o diretório do seu projeto:
+Execute: nome da função neste caso ativar
+
+
+
+
+---Criando script para criar estrutura python
+
+Get-ExecutionPolicy -List
+Set-ExecutionPolicy Unrestricted -Scope CurrentUser
+.\script.ps1
+
+
+------SOBRE O REDIS
+Acesso
+https://cloud.redis.io/#/
+login com google projetospython2025
+
+
+4506824800122
+
+Download
+https://github.com/tporadowski/redis/releases
+
+
+C:\Redis
+Adicione esta variável no path
+
+
+# No Windows: (procure para linux)
+# Vá até a pasta onde instalou o Redis e execute:
+redis-server.exe
+
+# No Windows, abra o Prompt de Comando como administrador e digite: (procure para linux)
+redis-cli ping
+PONG COM RESPOSTA
+
+Adicione logs extras no arquivo para debug:
+# No início do arquivo, adicione:
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)

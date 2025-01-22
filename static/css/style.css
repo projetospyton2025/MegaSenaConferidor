@@ -1,4 +1,4 @@
-:root {
+ :root {
     --primary-color: #008751;
     --secondary-color: #005c36;
     --danger-color: #dc3545;
@@ -79,7 +79,7 @@ body {
     border-color: #28a745;
 }
 
-/* Área de Drag and Drop Atualizada */
+
 .drop-zone {
     width: 100%;
     max-width: 800px;
@@ -169,7 +169,7 @@ body {
     transform: scale(1.2) translateY(-5px);
 }
 
-/* Continuação dos estilos existentes */
+
 .controles {
     display: flex;
     gap: 20px;
@@ -453,7 +453,7 @@ body {
 .premio-info {
     color: #28a745;
 }
-/* Estilo para checkbox dos jogos */
+
 .jogo-checkbox {
     margin-right: 10px;
     width: 18px;
@@ -461,7 +461,7 @@ body {
     cursor: pointer;
 }
 
-/* Atualização no jogo-item para acomodar checkbox */
+
 .jogo-item {
     display: flex;
     align-items: center;
@@ -479,7 +479,7 @@ body {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* Botões de ação para jogos */
+
 .acoes-jogos {
     display: flex;
     gap: 10px;
@@ -511,7 +511,7 @@ body {
     transform: translateY(-1px);
 }
 
-/* Estilo para jogos selecionados */
+
 .jogo-item.selecionado {
     background-color: rgba(0, 135, 81, 0.1);
     border-color: #008751;
@@ -520,14 +520,7 @@ body {
     font-weight: bold;
     color: var(--primary-color);
 }
-/*
-.valor-premio {
-    font-size: 0.9em;
-    color: #28a745;
-    margin-top: 5px;
-    font-weight: bold;
-}
-*/
+
 .valor-premio {
     font-size: 0.9em;
     color: #666;
@@ -539,7 +532,7 @@ body {
     color: #28a745;
 }
 
-/* Para quando não há ganhadores */
+
 .premio-info strong:only-child {
     color: #666;
 }
@@ -641,7 +634,7 @@ body {
     color: #28a745;
     font-weight: bold;
 }
-/* Estilos para a tabela de jogos mais sorteados */
+
 .jogos-mais-sorteados {
     margin-top: 30px;
     padding: 20px;
@@ -663,4 +656,239 @@ body {
     border-radius: 12px;
     margin: 2px;
     font-size: 0.9em;
+} 
+ /* Mantendo as variáveis de cores originais */
+:root {
+    --primary-color: #008751;
+    --secondary-color: #005c36;
+    --danger-color: #dc3545;
+    --success-color: #28a745;
+}
+
+/* Estilos base mantidos... */
+/* Adicionando Media Queries para responsividade */
+
+/* Ajustes para tablets e telas menores */
+@media screen and (max-width: 1024px) {
+    .container {
+        padding: 15px;
+        margin: 10px;
+    }
+
+    .cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+
+    .numeros {
+        grid-template-columns: repeat(8, 1fr);
+        gap: 6px;
+        padding: 10px;
+    }
+
+    .numero {
+        width: 35px;
+        height: 35px;
+        font-size: 14px;
+    }
+
+    .controles {
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+
+    .input-group {
+        flex: 1;
+        min-width: 150px;
+    }
+
+    .tabela-premios {
+        font-size: 0.85em;
+        min-width: 600px;
+    }
+}
+
+/* Ajustes para smartphones */
+@media screen and (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    .container {
+        padding: 10px;
+    }
+
+    .volante {
+        padding: 10px;
+        margin: 10px 0;
+    }
+
+    .numeros {
+        grid-template-columns: repeat(6, 1fr);
+        gap: 5px;
+    }
+
+    .numero {
+        width: 32px;
+        height: 32px;
+        font-size: 13px;
+    }
+
+    .cards {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .acoes {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .btn {
+        flex: 1;
+        min-width: 120px;
+        font-size: 14px;
+        padding: 8px 15px;
+    }
+
+    .drop-zone {
+        height: 150px;
+        padding: 15px;
+    }
+
+    .drop-zone-content p {
+        font-size: 0.9em;
+    }
+
+    .jogo-item {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .jogo-numeros {
+        order: 2;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .btn-remover {
+        order: 3;
+        width: 100%;
+    }
+
+    .jogo-checkbox {
+        order: 1;
+    }
+
+    /* Ajustes para tabelas em telas pequenas */
+    .tabela-container {
+        margin: 0 -10px;
+        padding: 0 10px;
+    }
+
+    .tabela-premios {
+        font-size: 0.8em;
+        min-width: 450px;
+    }
+
+    .tabela-premios th,
+    .tabela-premios td {
+        padding: 8px 10px;
+    }
+
+    .numero-tabela {
+        width: 20px;
+        height: 20px;
+        font-size: 11px;
+    }
+
+    .distribuicao-badge {
+        font-size: 0.8em;
+        padding: 3px 6px;
+    }
+
+    /* Ajustes para os resultados */
+    .resultado-item {
+        padding: 15px;
+    }
+
+    .numero-sorteado,
+    .numero-jogado {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+
+    /* Ajustes para botões de ação */
+    .acoes-jogos {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .btn-acao {
+        width: 100%;
+    }
+
+    /* Overlay e progresso */
+    .progress {
+        width: 90%;
+        max-width: 280px;
+    }
+}
+
+/* Ajustes para telas muito pequenas */
+@media screen and (max-width: 375px) {
+    .numeros {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 4px;
+    }
+
+    .numero {
+        width: 30px;
+        height: 30px;
+        font-size: 12px;
+    }
+
+    .input-group input {
+        width: 100%;
+    }
+
+    .controles {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .checkbox-group {
+        justify-content: center;
+    }
+
+    .tabela-premios {
+        min-width: 300px;
+        font-size: 0.75em;
+    }
+
+    .numeros-tabela {
+        gap: 3px;
+    }
+
+    .numero-tabela {
+        width: 18px;
+        height: 18px;
+        font-size: 10px;
+    }
+}
+
+/* Orientação paisagem para dispositivos móveis */
+@media screen and (max-width: 768px) and (orientation: landscape) {
+    .numeros {
+        grid-template-columns: repeat(10, 1fr);
+    }
+
+    .cards {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .volante {
+        margin: 10px 0;
+    }
 }

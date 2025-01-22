@@ -38,9 +38,6 @@ import redis
 import json
 
 
-
-
-
 # Configuração do Redis
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
 CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
@@ -128,7 +125,8 @@ def conferir():
             'resumo': {
                 'quatro': 0,
                 'cinco': 0,
-                'seis': 0
+                'seis': 0,
+                'total_premios': 0.0  # Adicionado para armazenar o total de prêmios
             }
         }
 
@@ -161,7 +159,6 @@ def conferir():
                 dezenas = [int(d) for d in resultado['dezenas']]
                 print(f"Dezenas sorteadas: {dezenas}")
 
-                # Resto do código permanece igual...
                 for idx, jogo in enumerate(jogos):
                     print(f"\nJogo {idx + 1}: {jogo}")
                     acertos = len(set(jogo) & set(dezenas))
@@ -177,6 +174,7 @@ def conferir():
                                 (acertos == 5 and premiacao['descricao'] == '5 acertos') or
                                 (acertos == 4 and premiacao['descricao'] == '4 acertos')):
                                 premio = premiacao['valorPremio']
+                                resultados['resumo']['total_premios'] += premio  # Soma o valor do prêmio
                                 break
 
                         if acertos == 4:
@@ -200,7 +198,9 @@ def conferir():
                 print(f"Erro ao processar concurso {concurso}: {str(e)}")
                 continue
 
-        # O resto do código permanece igual...
+        # Formatação do total para duas casas decimais
+        resultados['resumo']['total_premios'] = round(resultados['resumo']['total_premios'], 2)
+
         jogos_stats_ordenados = sorted(
             [{'numeros': stats['numeros'], 
               'total': stats['total'], 
@@ -213,13 +213,13 @@ def conferir():
         if not resultados['acertos']:
             return jsonify({
                 'message': 'Nenhum prêmio encontrado nos concursos verificados',
-                'resumo': resultados['resumo'],
+                'resumo': resultados['resumo'],  # Agora inclui total_premios
                 'jogos_stats': jogos_stats_ordenados
             }), 200
 
         return jsonify({
             'acertos': resultados['acertos'],
-            'resumo': resultados['resumo'],
+            'resumo': resultados['resumo'],  # Agora inclui total_premios
             'jogos_stats': jogos_stats_ordenados
         })
 
@@ -289,18 +289,18 @@ def processar_arquivo():
 
 
 
-"""
+
 if __name__ == '__main__':
      app.run(debug=True)
+
+
 """
-
-
      # Agora a parte de configuração da porta
 if __name__ == '__main__':
      port = int(os.environ.get("PORT", 5000))  # Obtém a porta do ambiente ou usa 5000 como padrão
      app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
 
-"""
+
      # Agora a parte de configuração da porta
 if __name__ == '__main__':
      port = int(os.environ.get("PORT", 10000))  # Obtém a porta do ambiente ou usa 5000 como padrão
