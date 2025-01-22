@@ -1,43 +1,3 @@
-Do código original, precisamos garantir:
-
-Drag and Drop:
-
-
-setupDragAndDrop()
-preventDefaults()
-handleDrop()
-handleFileSelect()
-processFile()
-
-
-Manipulação de Jogos:
-
-
-adicionarJogoNaLista()
-removerJogo()
-limparTodosJogos()
-removerJogosSelecionados()
-atualizarBotoesSeleção()
-
-
-Processamento dos Resultados:
-
-
-Atualização da interface
-Atualização dos cartões
-Atualização das tabelas
-atualizarTabelaJogosSorteados()
-
-
-Funcionalidades de Verificação:
-
-
-Validação dos jogos
-Validação dos concursos
-Feedback durante o processamento
-
-
-
 # Project Structure:
 MegaSenaConferidor/
 ├── requirements.txt
@@ -99,9 +59,6 @@ import aiohttp
 import asyncio
 import redis
 import json
-
-
-
 
 
 # Configuração do Redis
@@ -191,7 +148,8 @@ def conferir():
             'resumo': {
                 'quatro': 0,
                 'cinco': 0,
-                'seis': 0
+                'seis': 0,
+                'total_premios': 0  # Adicionando o campo para total
             }
         }
 
@@ -224,7 +182,6 @@ def conferir():
                 dezenas = [int(d) for d in resultado['dezenas']]
                 print(f"Dezenas sorteadas: {dezenas}")
 
-                # Resto do código permanece igual...
                 for idx, jogo in enumerate(jogos):
                     print(f"\nJogo {idx + 1}: {jogo}")
                     acertos = len(set(jogo) & set(dezenas))
@@ -240,6 +197,7 @@ def conferir():
                                 (acertos == 5 and premiacao['descricao'] == '5 acertos') or
                                 (acertos == 4 and premiacao['descricao'] == '4 acertos')):
                                 premio = premiacao['valorPremio']
+                                resultados['resumo']['total_premios'] += premio  # Soma o valor do prêmio
                                 break
 
                         if acertos == 4:
@@ -263,7 +221,9 @@ def conferir():
                 print(f"Erro ao processar concurso {concurso}: {str(e)}")
                 continue
 
-        # O resto do código permanece igual...
+        # Formatação do total para duas casas decimais
+        resultados['resumo']['total_premios'] = round(resultados['resumo']['total_premios'], 2)
+
         jogos_stats_ordenados = sorted(
             [{'numeros': stats['numeros'], 
               'total': stats['total'], 
@@ -276,13 +236,13 @@ def conferir():
         if not resultados['acertos']:
             return jsonify({
                 'message': 'Nenhum prêmio encontrado nos concursos verificados',
-                'resumo': resultados['resumo'],
+                'resumo': resultados['resumo'],  # Agora inclui total_premios
                 'jogos_stats': jogos_stats_ordenados
             }), 200
 
         return jsonify({
             'acertos': resultados['acertos'],
-            'resumo': resultados['resumo'],
+            'resumo': resultados['resumo'],  # Agora inclui total_premios
             'jogos_stats': jogos_stats_ordenados
         })
 
@@ -352,18 +312,18 @@ def processar_arquivo():
 
 
 
-"""
+
 if __name__ == '__main__':
      app.run(debug=True)
+
+
 """
-
-
      # Agora a parte de configuração da porta
 if __name__ == '__main__':
      port = int(os.environ.get("PORT", 5000))  # Obtém a porta do ambiente ou usa 5000 como padrão
      app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
 
-"""
+
      # Agora a parte de configuração da porta
 if __name__ == '__main__':
      port = int(os.environ.get("PORT", 10000))  # Obtém a porta do ambiente ou usa 5000 como padrão
@@ -374,6 +334,9 @@ if __name__ == '__main__':
 const jogosIncluidos = [];
 const jogosSelecionados = new Set();
 let conferenciaCancelada = false;
+
+// Configuração tamanho do lote
+const TAMANHO_LOTE = 930; // Tamanho ideal para processamento
 
 // Função para atualizar o contador e mensagem
 function atualizarContadorJogos() {
@@ -400,301 +363,16 @@ function formatarMensagemJogos(quantidade, acao) {
     return '';
 }
 
-// Função principal - Inicialização do documento
-document.addEventListener('DOMContentLoaded', function() {
-    setupDragAndDrop();
-    const numeros = document.querySelectorAll('.numero');
-    const limparBtn = document.getElementById('limpar');
-    const sugestaoBtn = document.getElementById('sugestao');
-    const conferirBtn = document.getElementById('conferir');
-    const incluirBtn = document.getElementById('incluir');
-    const listaJogos = document.getElementById('lista-jogos');
-    const overlay = document.getElementById('overlay');
-    const numerosSelecionados = new Set();
-
-
-    // Adicione o evento para o botão de cancelar
-    // O botão de cancelar conferência precisa ser verificado se existe antes de adicionar o evento:
-    const btnCancelarConferencia = document.getElementById('btn-cancelar-conferencia');
-    if (btnCancelarConferencia) {
-        btnCancelarConferencia.addEventListener('click', () => {
-            conferenciaCancelada = true;
-            overlay.style.display = 'none';
-        });
+// Função para calcular os lotes
+function calcularLotes(inicio, fim) {
+    const lotes = [];
+    for (let i = inicio; i <= fim; i += TAMANHO_LOTE) {
+        const loteFim = Math.min(i + TAMANHO_LOTE - 1, fim);
+        lotes.push({inicio: i, fim: loteFim});
     }
-   /* document.getElementById('btn-cancelar-conferencia').addEventListener('click', () => {
-        conferenciaCancelada = true;
-        overlay.style.display = 'none';
-    });
-   */
+    return lotes;
+}
 
-    // Adiciona eventos para os novos botões
-    document.getElementById('btn-limpar-todos').addEventListener('click', limparTodosJogos);
-    document.getElementById('btn-remover-selecionados').addEventListener('click', removerJogosSelecionados);
-
-    // Inicializa o contador
-    atualizarContadorJogos();
-
-    // Funcionalidade de seleção de números
-    numeros.forEach(numero => {
-        numero.addEventListener('click', () => {
-            const num = parseInt(numero.dataset.numero);
-            if (numero.classList.contains('selecionado')) {
-                numero.classList.remove('selecionado');
-                numerosSelecionados.delete(num);
-            } else if (numerosSelecionados.size < 6) {
-                numero.classList.add('selecionado');
-                numerosSelecionados.add(num);
-            }
-        });
-    });
-
-    // Botão Limpar
-    limparBtn.addEventListener('click', () => {
-        numeros.forEach(numero => numero.classList.remove('selecionado'));
-        numerosSelecionados.clear();
-    });
-
-    // Botão Sugestão
-    sugestaoBtn.addEventListener('click', async () => {
-        const response = await fetch('/gerar_numeros');
-        const data = await response.json();
-
-        limparBtn.click();
-        data.numeros.forEach(num => {
-            const numero = document.querySelector(`[data-numero="${num}"]`);
-            numero.classList.add('selecionado');
-            numerosSelecionados.add(num);
-        });
-    });
-
-    // Botão Incluir
-    incluirBtn.addEventListener('click', () => {
-        if (numerosSelecionados.size !== 6) {
-            alert('Selecione 6 números antes de incluir o jogo!');
-            return;
-        }
-
-        const numerosArray = Array.from(numerosSelecionados).sort((a, b) => a - b);
-        jogosIncluidos.push(numerosArray);
-        adicionarJogoNaLista(numerosArray);
-        atualizarContadorJogos();
-        alert('1 jogo foi incluído com sucesso!');
-        limparBtn.click();
-    });
-
-   // Botão Conferir
-// Botão Conferir
-conferirBtn.addEventListener('click', async () => {
-    if (jogosIncluidos.length === 0) {
-        alert('Inclua pelo menos um jogo antes de conferir!');
-        return;
-    }
-
-    const inicio = document.getElementById('inicio').value;
-    const fim = document.getElementById('fim').value;
-
-    if (!inicio || !fim || parseInt(inicio) > parseInt(fim)) {
-        alert('Verifique os números dos concursos!');
-        return;
-    }
-
-    // Adicione esta validação
-    const intervalo = fim - inicio;
-    if (intervalo > 3000) { //Conferência de no máximo 3000 por vez
-        const confirmacao = confirm('Para melhor desempenho, recomendamos conferir no máximo 3000 concursos por vez. Deseja continuar mesmo assim?');
-        if (!confirmacao) {
-            return;
-        }
-    }
-
-    overlay.style.display = 'flex';
-    document.querySelector('.progress-text').textContent = 'Conferindo jogos...';
-
-    conferenciaCancelada = false;
-
-    const LOTE_TAMANHO = 3000; // Tamanho máximo de cada lote
-    let lotesProcessados = [];
-
-    if (intervalo > LOTE_TAMANHO) {
-        for (let i = inicio; i <= fim; i += LOTE_TAMANHO) {
-            const loteFim = Math.min(i + LOTE_TAMANHO - 1, fim);
-            lotesProcessados.push({inicio: i, fim: loteFim});
-        }
-    } else {
-        lotesProcessados.push({inicio, fim});
-    }
-
-    try {
-        for (const lote of lotesProcessados) {
-            const response = await fetch('/conferir', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    inicio: lote.inicio,
-                    fim: lote.fim,
-                    jogos: jogosIncluidos
-                })
-            });
-
-            // Novo trecho de tratamento da resposta (adicionado do código2)
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Erro ao conferir jogos');
-            }
-
-            const data = await response.json();
-
-            if (conferenciaCancelada) {
-                return;
-            }
-
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            if (data.message) {
-                alert(data.message);
-                return;
-            }
-
-            // Atualizar contagens
-            document.getElementById('quatro-acertos').textContent = data.resumo.quatro;
-            document.getElementById('cinco-acertos').textContent = data.resumo.cinco;
-            document.getElementById('seis-acertos').textContent = data.resumo.seis;
-
-            // Atualizar valores em reais
-            let valorQuadra = 0, valorQuina = 0, valorSena = 0;
-            let temQuadra = false, temQuina = false, temSena = false;
-
-            if (data.acertos) {
-                data.acertos.forEach(resultado => {
-                    if (resultado.acertos === 4) {
-                        valorQuadra += resultado.premio;
-                        temQuadra = true;
-                    }
-                    if (resultado.acertos === 5) {
-                        valorQuina += resultado.premio;
-                        temQuina = true;
-                    }
-                    if (resultado.acertos === 6) {
-                        valorSena += resultado.premio;
-                        temSena = true;
-                    }
-                });
-            }
-
-            // Atualiza os valores nos cartões
-            document.getElementById('quatro-valor').textContent = temQuadra && valorQuadra > 0 ? 
-            `R$ ${valorQuadra.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-            'Não houve ganhadores';
-
-            document.getElementById('cinco-valor').textContent = temQuina && valorQuina > 0 ? 
-            `R$ ${valorQuina.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-            'Não houve ganhadores';
-
-            document.getElementById('seis-valor').textContent = temSena && valorSena > 0 ? 
-            `R$ ${valorSena.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-            'Não houve ganhadores';
-
-            // Atualizar detalhes visuais
-            const detalhesDiv = document.getElementById('detalhes-resultados');
-            detalhesDiv.innerHTML = '';
-
-            const tabelaBody = document.getElementById('tabela-resultados');
-            tabelaBody.innerHTML = ''; // Limpa a tabela
-
-            // Processamento dos resultados
-            if (data.acertos && data.acertos.length > 0) {
-                data.acertos.forEach(resultado => {
-                    // Adicionar na seção de detalhes
-                    const resultadoDiv = document.createElement('div');
-                    resultadoDiv.className = 'resultado-item';
-                    resultadoDiv.innerHTML = `
-                        <div class="resultado-header">
-                            <h3>Concurso ${resultado.concurso} - ${resultado.data}</h3>
-                            <p>${resultado.local || ''}</p>
-                        </div>
-                        <div class="resultado-numeros">
-                            <div class="numeros-sorteados">
-                                <h4>Números Sorteados:</h4>
-                                <div class="numeros-lista">
-                                    ${resultado.numeros_sorteados
-                                        .sort((a, b) => a - b)
-                                        .map(n => `<span class="numero-sorteado">${String(n).padStart(2, '0')}</span>`)
-                                        .join(' ')}
-                                </div>
-                            </div>
-                            <div class="seu-jogo">
-                                <h4>Seu Jogo:</h4>
-                                <div class="numeros-lista">
-                                    ${resultado.seus_numeros
-                                        .sort((a, b) => a - b)
-                                        .map(n => `<span class="numero-jogado ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
-                                        .join(' ')}
-                                </div>
-                            </div>
-                            <div class="resultado-info">
-                                <p class="acertos-info">Acertos: <strong>${resultado.acertos}</strong></p>
-                                ${resultado.premio > 0 ? 
-                                    `<p class="premio-info">Prêmio: <strong>R$ ${resultado.premio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>` 
-                                    : ''}
-                            </div>
-                        </div>
-                    `;
-                    detalhesDiv.appendChild(resultadoDiv);
-
-                    // Adicionar na tabela
-                    const row = document.createElement('tr');
-                    const numerosSorteados = resultado.numeros_sorteados
-                        .sort((a, b) => a - b)
-                        .map(n => `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`)
-                        .join('');
-                    const seusNumeros = resultado.seus_numeros
-                        .sort((a, b) => a - b)
-                        .map(n => `<span class="numero-tabela ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
-                        .join('');
-                    const premioText = resultado.premio > 0 
-                        ? `R$ ${resultado.premio.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` 
-                        : 'Não houve ganhadores';
-
-                    row.innerHTML = `
-                        <td>${resultado.concurso}</td>
-                        <td>${resultado.data}</td>
-                        <td>${resultado.local || '-'}</td>
-                        <td><div class="numeros-tabela">${numerosSorteados}</div></td>
-                        <td><div class="numeros-tabela">${seusNumeros}</div></td>
-                        <td>${resultado.acertos}</td>
-                        <td>${premioText}</td>
-                        <td>${resultado.premio > 0 ? 'Premiado' : 'Acumulado'}</td>
-                    `;
-                    tabelaBody.appendChild(row);
-                });
-            } else {
-                detalhesDiv.innerHTML = '<p class="sem-resultados">Nenhum prêmio encontrado para os jogos conferidos.</p>';
-            }
-
-            // Atualização da tabela de jogos sorteados
-            if (data.jogos_stats) {
-                console.log('Dados recebidos para tabela de jogos mais sorteados:', data.jogos_stats);
-                atualizarTabelaJogosSorteados(data.jogos_stats);
-            }
-        }
-    } catch (error) {
-        console.error('Erro detalhado:', error);
-        if (error.message.includes('<!DOCTYPE')) {
-            alert('O serviço está temporariamente indisponível. Por favor, tente novamente mais tarde ou reduza o intervalo de concursos.');
-        } else {
-            alert(error.message);
-        }
-    } finally {
-        overlay.style.display = 'none';
-    }
-});
-
- 
 // Funções de Drag and Drop
 function setupDragAndDrop() {
     const dropZone = document.getElementById('drop-zone');
@@ -786,7 +464,6 @@ async function processFile(file) {
         dropZone.classList.remove('processing');
     }
 }
-
 // Função para adicionar jogo na lista
 function adicionarJogoNaLista(jogo) {
     const jogoItem = document.createElement('div');
@@ -876,10 +553,6 @@ function removerJogosSelecionados() {
                 JSON.stringify(j) === jogoStr
             );
             if (index !== -1) {
-                // Errado
-                //jogosIncluidos.splice(index,jogosIncluidos.splice(index, 1));
-
-                // Correto
                 jogosIncluidos.splice(index, 1);
             }
         });
@@ -902,6 +575,285 @@ function atualizarBotoesSeleção() {
         removerSelecionadosBtn.disabled = jogosSelecionados.size === 0;
     }
 }
+
+// Função principal - Inicialização do documento
+document.addEventListener('DOMContentLoaded', function() {
+    setupDragAndDrop();
+    const numeros = document.querySelectorAll('.numero');
+    const limparBtn = document.getElementById('limpar');
+    const sugestaoBtn = document.getElementById('sugestao');
+    const conferirBtn = document.getElementById('conferir');
+    const incluirBtn = document.getElementById('incluir');
+    const listaJogos = document.getElementById('lista-jogos');
+    const overlay = document.getElementById('overlay');
+    const numerosSelecionados = new Set();
+
+    // Configuração do botão de cancelar conferência
+    const btnCancelarConferencia = document.getElementById('btn-cancelar-conferencia');
+    if (btnCancelarConferencia) {
+        btnCancelarConferencia.addEventListener('click', () => {
+            conferenciaCancelada = true;
+            overlay.style.display = 'none';
+        });
+    }
+
+    // Configuração dos botões de ação
+    document.getElementById('btn-limpar-todos').addEventListener('click', limparTodosJogos);
+    document.getElementById('btn-remover-selecionados').addEventListener('click', removerJogosSelecionados);
+
+    // Inicialização
+    atualizarContadorJogos();
+    // Eventos de seleção de números
+    numeros.forEach(numero => {
+        numero.addEventListener('click', () => {
+            const num = parseInt(numero.dataset.numero);
+            if (numero.classList.contains('selecionado')) {
+                numero.classList.remove('selecionado');
+                numerosSelecionados.delete(num);
+            } else if (numerosSelecionados.size < 6) {
+                numero.classList.add('selecionado');
+                numerosSelecionados.add(num);
+            }
+        });
+    });
+
+    // Botão Limpar
+    limparBtn.addEventListener('click', () => {
+        numeros.forEach(numero => numero.classList.remove('selecionado'));
+        numerosSelecionados.clear();
+    });
+
+    // Botão Sugestão
+    sugestaoBtn.addEventListener('click', async () => {
+        const response = await fetch('/gerar_numeros');
+        const data = await response.json();
+
+        limparBtn.click();
+        data.numeros.forEach(num => {
+            const numero = document.querySelector(`[data-numero="${num}"]`);
+            numero.classList.add('selecionado');
+            numerosSelecionados.add(num);
+        });
+    });
+
+    // Botão Incluir
+    incluirBtn.addEventListener('click', () => {
+        if (numerosSelecionados.size !== 6) {
+            alert('Selecione 6 números antes de incluir o jogo!');
+            return;
+        }
+
+        const numerosArray = Array.from(numerosSelecionados).sort((a, b) => a - b);
+        jogosIncluidos.push(numerosArray);
+        adicionarJogoNaLista(numerosArray);
+        atualizarContadorJogos();
+        alert('1 jogo foi incluído com sucesso!');
+        limparBtn.click();
+    });
+
+    // Botão Conferir com processamento em lotes
+    conferirBtn.addEventListener('click', async () => {
+        if (jogosIncluidos.length === 0) {
+            alert('Inclua pelo menos um jogo antes de conferir!');
+            return;
+        }
+
+        const inicio = parseInt(document.getElementById('inicio').value);
+        const fim = parseInt(document.getElementById('fim').value);
+
+        if (!inicio || !fim || inicio > fim) {
+            alert('Verifique os números dos concursos!');
+            return;
+        }
+
+        overlay.style.display = 'flex';
+        conferenciaCancelada = false;
+
+        // Calcula os lotes para processamento
+        const lotes = calcularLotes(inicio, fim);
+        let resultadosAcumulados = {
+            acertos: [],
+            resumo: {
+                quatro: 0,
+                cinco: 0,
+                seis: 0
+            }
+        };
+        try {
+            for (const lote of lotes) {
+                if (conferenciaCancelada) break;
+
+                document.querySelector('.progress-text').textContent = 
+                    `Processando concursos ${lote.inicio} a ${lote.fim}...`;
+
+                const response = await fetch('/conferir', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        inicio: lote.inicio,
+                        fim: lote.fim,
+                        jogos: jogosIncluidos
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Erro ao conferir jogos');
+                }
+
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                if (data.message) {
+                    alert(data.message);
+                    continue;
+                }
+
+                // Atualizar contagens
+                document.getElementById('quatro-acertos').textContent = data.resumo.quatro;
+                document.getElementById('cinco-acertos').textContent = data.resumo.cinco;
+                document.getElementById('seis-acertos').textContent = data.resumo.seis;
+
+                // Atualizar valores em reais
+                let valorQuadra = 0, valorQuina = 0, valorSena = 0;
+                let temQuadra = false, temQuina = false, temSena = false;
+
+                if (data.acertos) {
+                    data.acertos.forEach(resultado => {
+                        if (resultado.acertos === 4) {
+                            valorQuadra += resultado.premio;
+                            temQuadra = true;
+                        }
+                        if (resultado.acertos === 5) {
+                            valorQuina += resultado.premio;
+                            temQuina = true;
+                        }
+                        if (resultado.acertos === 6) {
+                            valorSena += resultado.premio;
+                            temSena = true;
+                        }
+                    });
+                }
+
+                // Atualiza os valores nos cartões
+                document.getElementById('quatro-valor').textContent = temQuadra && valorQuadra > 0 ? 
+                    `R$ ${valorQuadra.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+                    'Não houve ganhadores';
+
+                document.getElementById('cinco-valor').textContent = temQuina && valorQuina > 0 ? 
+                    `R$ ${valorQuina.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+                    'Não houve ganhadores';
+
+                document.getElementById('seis-valor').textContent = temSena && valorSena > 0 ? 
+                    `R$ ${valorSena.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+                    'Não houve ganhadores';
+
+                // Atualizar detalhes visuais
+                const detalhesDiv = document.getElementById('detalhes-resultados');
+                detalhesDiv.innerHTML = '';
+
+                const tabelaBody = document.getElementById('tabela-resultados');
+                tabelaBody.innerHTML = ''; // Limpa a tabela
+
+                if (data.acertos && data.acertos.length > 0) {
+                    data.acertos.forEach(resultado => {
+                        // Adicionar na seção de detalhes
+                        const resultadoDiv = document.createElement('div');
+                        resultadoDiv.className = 'resultado-item';
+                        resultadoDiv.innerHTML = `
+                            <div class="resultado-header">
+                                <h3>Concurso ${resultado.concurso} - ${resultado.data}</h3>
+                                <p>${resultado.local || ''}</p>
+                            </div>
+                            <div class="resultado-numeros">
+                                <div class="numeros-sorteados">
+                                    <h4>Números Sorteados:</h4>
+                                    <div class="numeros-lista">
+                                        ${resultado.numeros_sorteados
+                                            .sort((a, b) => a - b)
+                                            .map(n => `<span class="numero-sorteado">${String(n).padStart(2, '0')}</span>`)
+                                            .join(' ')}
+                                    </div>
+                                </div>
+                                <div class="seu-jogo">
+                                    <h4>Seu Jogo:</h4>
+                                    <div class="numeros-lista">
+                                        ${resultado.seus_numeros
+                                            .sort((a, b) => a - b)
+                                            .map(n => `<span class="numero-jogado ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
+                                            .join(' ')}
+                                    </div>
+                                </div>
+                                <div class="resultado-info">
+                                    <p class="acertos-info">Acertos: <strong>${resultado.acertos}</strong></p>
+                                    ${resultado.premio > 0 ? 
+                                        `<p class="premio-info">Prêmio: <strong>R$ ${resultado.premio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>` 
+                                        : ''}
+                                </div>
+                            </div>
+                        `;
+                        detalhesDiv.appendChild(resultadoDiv);
+
+                        // Adicionar na tabela
+                        const row = document.createElement('tr');
+                        const numerosSorteados = resultado.numeros_sorteados
+                            .sort((a, b) => a - b)
+                            .map(n => `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`)
+                            .join('');
+                        const seusNumeros = resultado.seus_numeros
+                            .sort((a, b) => a - b)
+                            .map(n => `<span class="numero-tabela ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
+                            .join('');
+                        const premioText = resultado.premio > 0 
+                            ? `R$ ${resultado.premio.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` 
+                            : 'Não houve ganhadores';
+
+                        row.innerHTML = `
+                            <td>${resultado.concurso}</td>
+                            <td>${resultado.data}</td>
+                            <td>${resultado.local || '-'}</td>
+                            <td><div class="numeros-tabela">${numerosSorteados}</div></td>
+                            <td><div class="numeros-tabela">${seusNumeros}</div></td>
+                            <td>${resultado.acertos}</td>
+                            <td>${premioText}</td>
+                            <td>${resultado.premio > 0 ? 'Premiado' : 'Acumulado'}</td>
+                        `;
+                        tabelaBody.appendChild(row);
+                        
+                    });
+                    // Atualiza o total no rodapé
+                    const totalCell = document.querySelector('.total-premios');
+                    if (totalCell) {
+                        totalCell.textContent = `R$ ${data.resumo.total_premios.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+                    }
+                } else {
+                    detalhesDiv.innerHTML = '<p class="sem-resultados">Nenhum prêmio encontrado para os jogos conferidos.</p>';
+                }
+
+                // Atualização da tabela de jogos sorteados
+                if (data.jogos_stats) {
+                    console.log('Dados recebidos para tabela de jogos mais sorteados:', data.jogos_stats);
+                    atualizarTabelaJogosSorteados(data.jogos_stats);
+                }
+            }
+        } catch (error) {
+            console.error('Erro detalhado:', error);
+            if (error.message.includes('<!DOCTYPE')) {
+                alert('O serviço está temporariamente indisponível. Por favor, tente novamente mais tarde ou reduza o intervalo de concursos.');
+            } else {
+                alert(error.message);
+            }
+        } finally {
+            overlay.style.display = 'none';
+        }
+    });
+});
+
 function atualizarTabelaJogosSorteados(jogos_stats) {
     const tbody = document.querySelector('#tabela-jogos-sorteados tbody');
     tbody.innerHTML = '';
@@ -941,8 +893,6 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
         tbody.appendChild(tr);
     });
 }
-
-});
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -954,6 +904,56 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
 <body>
     <div class="container">
         <h1>Conferidor MegaSena</h1>
+
+    
+        <h1>Informação importante!</h1>
+        <h2>Para os Jogos:</h2>
+        <ul>
+            <li>Você pode carregar quantos jogos quiser (20 mil, 80 mil, 100 mil...)</li>
+            <li>Não há limite para quantidade de jogos</li>
+            <li>Todos os jogos serão verificados em cada lote</li>
+        </ul>
+        <h2>Para os Concursos:</h2>
+        <ul>
+            <li>O sistema agora processa em lotes de 930 concursos</li>
+            <li>
+                Por exemplo, se você quiser verificar do concurso 1 até o 2816:
+                <ul>
+                    <li>Lote 1: concursos 1-930</li>
+                    <li>Lote 2: concursos 931-1860</li>
+                    <li>Lote 3: concursos 1861-2790</li>
+                    <li>Lote 4: concursos 2791-2816</li>
+                </ul>
+            </li>
+        </ul>
+        <h2>Acumulação de Resultados:</h2>
+        <ul>
+            <li>O sistema mantém um acumulador que vai somando:</li>
+            <ul>
+                <li>Quantidade de acertos (quadra, quina, sena)</li>
+                <li>Valores dos prêmios</li>
+                <li>Todos os jogos premiados</li>
+                <li>Estatísticas gerais</li>
+            </ul>
+        </ul>
+        <p>
+            <pre>
+                NA PRATICA...
+                Se você tem 50.000 jogos:
+                    Lote 1 (1-930): 
+                    - Processa os 50.000 jogos
+                    - Guarda resultados
+                    ↓
+                    Lote 2 (931-1860):
+                    - Processa os mesmos 50.000 jogos
+                    - Soma com resultados anteriores
+                    ↓
+                    E assim por diante...
+            </pre>
+            Os lotes sempre serão divididos em 930, então  <b><u>adicione sempre 1-930...</u></b> e selecione o checkbox <b><u>Somente Premiados</u></b>
+        </p>
+
+   
         
         <div class="volante">
             <h2>Selecione 6 números</h2>
@@ -1090,7 +1090,666 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
-/* Mantendo as variáveis de cores originais */
+ :root {
+    --primary-color: #008751;
+    --secondary-color: #005c36;
+    --danger-color: #dc3545;
+    --success-color: #28a745;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    padding: 20px;
+    background-color: #f4f4f4;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+.volante {
+    margin: 20px 0;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.volante h2 {
+    color: #495057;
+    margin-bottom: 20px;
+    font-size: 1.2rem;
+}
+
+.numeros {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 8px;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 15px;
+}
+
+.numero {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid #ced4da;
+    background-color: white;
+    color: #495057;
+    font-weight: bold;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0 auto;
+}
+
+.numero:hover {
+    background-color: #e9ecef;
+    border-color: #adb5bd;
+}
+
+.numero.selecionado {
+    background-color: #28a745;
+    color: white;
+    border-color: #28a745;
+}
+
+
+.drop-zone {
+    width: 100%;
+    max-width: 800px;
+    height: 180px;
+    margin: 20px auto;
+    padding: 25px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 1.2em;
+    color: #008751;
+    border: 3px dashed #008751;
+    border-radius: 12px;
+    background-color: rgba(0, 135, 81, 0.05);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.drop-zone:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 135, 81, 0.2);
+    background-color: rgba(0, 135, 81, 0.1);
+}
+
+.drop-zone.dragover {
+    background-color: rgba(40, 167, 69, 0.15);
+    border-color: #28a745;
+    transform: scale(1.02);
+    box-shadow: 0 6px 16px rgba(40, 167, 69, 0.25);
+}
+
+.drop-zone.dragover .drop-zone-content {
+    transform: scale(1.05);
+}
+
+.drop-zone-content {
+    transition: transform 0.3s ease;
+}
+
+.drop-zone-content p {
+    margin: 0;
+    color: #008751;
+    font-weight: 500;
+}
+
+.drop-zone-hint {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 10px;
+    opacity: 0.8;
+}
+
+.drop-zone.processing {
+    animation: pulse 2s infinite;
+    pointer-events: none;
+    background-color: rgba(0, 135, 81, 0.1);
+}
+
+.drop-zone.processing .drop-zone-content {
+    opacity: 0.5;
+}
+
+.drop-zone.processing::after {
+    content: "Processando...";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-weight: bold;
+    color: #008751;
+    z-index: 2;
+}
+
+.drop-zone::before {
+    content: "⬆️";
+    font-size: 2em;
+    margin-bottom: 10px;
+    display: block;
+    transition: transform 0.3s ease;
+}
+
+.drop-zone.dragover::before {
+    transform: scale(1.2) translateY(-5px);
+}
+
+
+.controles {
+    display: flex;
+    gap: 20px;
+    margin: 20px 0;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    align-items: center;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.input-group label {
+    font-weight: bold;
+    color: #495057;
+}
+
+.input-group input {
+    padding: 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    width: 120px;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.acoes {
+    display: flex;
+    gap: 10px;
+    margin: 20px 0;
+    justify-content: center;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.btn-vermelho {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.btn-azul {
+    background-color: #007bff; 
+    color: white;
+}
+
+.btn-roxo {
+    background-color: #6f42c1;
+    color: white;
+}
+
+.btn-verde {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.card {
+    padding: 20px;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.card h3 {
+    color: #495057;
+    margin-bottom: 10px;
+}
+
+.contagem {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.lista-jogos {
+    margin-top: 20px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    min-height: 100px;
+    background-color: #fff;
+}
+
+.jogo-item {
+    background-color: #f8f9fa;
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.jogo-numeros {
+    display: flex;
+    gap: 5px;
+}
+
+.jogo-numero {
+    background-color: var(--primary-color);
+    color: white;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.btn-remover {
+    background-color: var(--danger-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-remover:hover {
+    opacity: 0.9;
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(5px);
+}
+
+.progress {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    width: 300px;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.progress-bar {
+    height: 6px;
+    background-color: var(--primary-color);
+    border-radius: 3px;
+    margin: 10px 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.4),
+        transparent
+    );
+    animation: shimmer 1s infinite;
+}
+
+.progress-text {
+    margin-top: 10px;
+    color: #495057;
+    font-weight: 500;
+}
+
+.detalhes-resultados {
+    margin-top: 20px;
+}
+
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(0, 135, 81, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(0, 135, 81, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(0, 135, 81, 0);
+    }
+}
+
+.sem-resultados {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+}
+
+.resultado-item {
+    background-color: #fff;
+    padding: 20px;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.resultado-numeros {
+    margin: 15px 0;
+}
+
+.numeros-lista {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 10px 0;
+}
+
+.numero-sorteado,
+.numero-jogado {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    background: #f0f0f0;
+    font-weight: bold;
+}
+
+.numero-jogado.acerto {
+    background: #28a745;
+    color: white;
+}
+
+.acertos-info,
+.premio-info {
+    margin: 10px 0;
+    font-size: 1.1em;
+}
+
+.premio-info {
+    color: #28a745;
+}
+
+.jogo-checkbox {
+    margin-right: 10px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+
+.jogo-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    margin: 8px 0;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+    transition: all 0.2s ease;
+}
+
+.jogo-item:hover {
+    background-color: #e9ecef;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+
+.acoes-jogos {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    justify-content: flex-end;
+}
+
+.btn-acao {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-acao:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-acao:not(:disabled):hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+
+.jogo-item.selecionado {
+    background-color: rgba(0, 135, 81, 0.1);
+    border-color: #008751;
+}
+#contador-jogos {
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.valor-premio {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 5px;
+    font-weight: 500;
+}
+
+.premio-info strong {
+    color: #28a745;
+}
+
+
+.premio-info strong:only-child {
+    color: #666;
+}
+
+.btn-cancelar {
+    margin-top: 15px;
+    padding: 8px 16px;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-cancelar:hover {
+    background-color: #c82333;
+}
+.tabela-resumo {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.tabela-resumo h2 {
+    color: #333;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.tabela-container {
+    overflow-x: auto;
+}
+
+.tabela-premios {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 0.9em;
+    min-width: 800px;
+    background-color: white;
+}
+
+.tabela-premios thead tr {
+    background-color: #008751;
+    color: white;
+    text-align: left;
+}
+
+.tabela-premios th,
+.tabela-premios td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #dddddd;
+}
+
+.tabela-premios tbody tr:nth-of-type(even) {
+    background-color: #f3f3f3;
+}
+
+.tabela-premios tbody tr:hover {
+    background-color: #f5f5f5;
+}
+
+.numeros-tabela {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.numero-tabela {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: #e9ecef;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.numero-tabela.acerto {
+    background-color: #28a745;
+    color: white;
+}
+.tabela-premios tfoot {
+    background-color: #f8f9fa;
+    font-weight: 500;
+}
+
+.tabela-premios tfoot td {
+    padding: 15px;
+    border-top: 2px solid #008751;
+}
+
+.total-premios {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.jogos-mais-sorteados {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.jogos-mais-sorteados h2 {
+    color: #333;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.distribuicao-badge {
+    display: inline-block;
+    background-color: #f0f0f0;
+    padding: 4px 8px;
+    border-radius: 12px;
+    margin: 2px;
+    font-size: 0.9em;
+} 
+ /* Mantendo as variáveis de cores originais */
 :root {
     --primary-color: #008751;
     --secondary-color: #005c36;

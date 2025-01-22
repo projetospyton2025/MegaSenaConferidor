@@ -126,7 +126,7 @@ def conferir():
                 'quatro': 0,
                 'cinco': 0,
                 'seis': 0,
-                'total_premios': 0.0  # Adicionado para armazenar o total de prêmios
+                'total_premios': 0  # Adicionando o campo para total
             }
         }
 

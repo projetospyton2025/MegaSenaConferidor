@@ -492,7 +492,13 @@ document.addEventListener('DOMContentLoaded', function() {
                             <td>${resultado.premio > 0 ? 'Premiado' : 'Acumulado'}</td>
                         `;
                         tabelaBody.appendChild(row);
+                        
                     });
+                    // Atualiza o total no rodapé
+                    const totalCell = document.querySelector('.total-premios');
+                    if (totalCell) {
+                        totalCell.textContent = `R$ ${data.resumo.total_premios.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+                    }
                 } else {
                     detalhesDiv.innerHTML = '<p class="sem-resultados">Nenhum prêmio encontrado para os jogos conferidos.</p>';
                 }
