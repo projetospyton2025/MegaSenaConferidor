@@ -10,7 +10,6 @@
     <div class="container">
         <h1>Conferidor MegaSena</h1>
 
-    
         <h1>Informação importante!</h1>
         <h2>Para os Jogos:</h2>
         <ul>
@@ -43,7 +42,7 @@
         </ul>
         <p>
             <pre>
-                NA PRATICA...
+                NA PRÁTICA...
                 Se você tem 50.000 jogos:
                     Lote 1 (1-930): 
                     - Processa os 50.000 jogos
@@ -58,8 +57,6 @@
             Os lotes sempre serão divididos em 930, então  <b><u>adicione sempre 1-930...</u></b> e selecione o checkbox <b><u>Somente Premiados</u></b>
         </p>
 
-   
-        
         <div class="volante">
             <h2>Selecione 6 números</h2>
             <div class="numeros">
@@ -69,7 +66,6 @@
             </div>
         </div>
 
-        <!--# Adicione este HTML após a div do volante-->
         <div class="drop-zone" id="drop-zone">
             <div class="drop-zone-content">
                 <p>Arraste e solte seu arquivo aqui ou clique para selecionar</p>
@@ -104,8 +100,7 @@
             <div id="lista-jogos" class="lista-jogos"></div>
         </div>
 
-         <!-- Elementos adicionados conforme CODIGO-2 -->
-         <div class="acoes-jogos">
+        <div class="acoes-jogos">
             <button id="btn-remover-selecionados" class="btn-acao" disabled>
                 Remover Selecionados
             </button>
@@ -114,7 +109,6 @@
             </button>
         </div>
 
-        <!--Caixa que aparece quando o botão conferir é clicado-->
         <div id="overlay" class="overlay" style="display: none;">
             <div class="progress">
                 <div class="progress-bar"></div>
@@ -123,9 +117,17 @@
             </div>
         </div>
 
-
         <div class="resultados">
             <h2>Resumo de acertos</h2>
+            <div class="export-buttons hidden">
+                <button onclick="exportarDados('resumo-acertos', 'xlsx')" class="btn-export">
+                    <i class="fas fa-file-excel"></i> Excel
+                </button>
+                <button onclick="exportarDados('resumo-acertos', 'html')" class="btn-export">
+                    <i class="fas fa-file-code"></i> HTML
+                </button>
+            </div>
+
             <div class="cards">
                 <div class="card">
                     <h3>4 Acertos</h3>
@@ -145,9 +147,16 @@
             </div>
             <div id="detalhes-resultados" class="detalhes-resultados"></div>
 
-            <!--TABELA DE RESUMO DOS RESULTADOS-->
             <div class="tabela-resumo">
                 <h2>Resumo dos Jogos Premiados</h2>
+                <div class="export-buttons hidden">
+                    <button onclick="exportarDados('jogos-premiados', 'xlsx')" class="btn-export">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportarDados('jogos-premiados', 'html')" class="btn-export">
+                        <i class="fas fa-file-code"></i> HTML
+                    </button>
+                </div>
                 <div class="tabela-container">
                     <table class="tabela-premios">
                         <thead>
@@ -174,9 +183,17 @@
                     </table>
                 </div>
             </div>
-            <!-- Adicionar após a div tabela-resumo para trazer a tabela Jogos Mais Sorteados-->
+
             <div class="jogos-mais-sorteados">
                 <h2>Jogos Mais Sorteados</h2>
+                <div class="export-buttons hidden">
+                    <button onclick="exportarDados('jogos-sorteados', 'xlsx')" class="btn-export">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportarDados('jogos-sorteados', 'html')" class="btn-export">
+                        <i class="fas fa-file-code"></i> HTML
+                    </button>
+                </div>
                 <div class="tabela-container">
                     <table class="tabela-premios" id="tabela-jogos-sorteados">
                         <thead>

@@ -1,42 +1,17 @@
-# app.py
-# Valores que podem ser alterados... 
+#ESTOU COM ESTE ERRO ME AJUDE
 
-""" MAIN.JS
-// Adicione esta validação
-    const intervalo = fim - inicio;
-    if (intervalo > 100) { //Conferência de no máximo 100 por vez
-        const confirmacao = confirm('Para melhor desempenho, recomendamos conferir no máximo 100 concursos por vez. Deseja continuar mesmo assim?');
-        if (!confirmacao) {
-            return;
-        }
-    }
 
-   // Adicione esta validação
-    const intervalo = fim - inicio;
-    if (intervalo > 3000) { //Conferência de no máximo 3000 por vez 
-
-// APP.PY
-# Ordena as estatísticas de jogos
-        jogos_stats_ordenados = sorted(
-            [{'numeros': stats['numeros'], 
-              'total': stats['total'], 
-              'distribuicao': stats['distribuicao']} 
-             for stats in jogos_stats.values()],
-            key=lambda x: x['total'],
-            reverse=True
-        )[:10]  # Retorna apenas os 10 mais frequentes
-"""
-
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import requests
 from datetime import datetime
 import os
-import random  # Adicione esta linha
+import random
 import aiohttp
 import asyncio
 import redis
 import json
-
+import pandas as pd
+import io
 
 # Configuração do Redis
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
@@ -44,7 +19,6 @@ CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
 
 # Funções auxiliares para o cache
 def get_cached_result(concurso):
-    """Tenta obter resultado do cache"""
     try:
         cached = redis_client.get(f"megasena:{concurso}")
         if cached:
@@ -54,22 +28,14 @@ def get_cached_result(concurso):
     return None
 
 def set_cached_result(concurso, data):
-    """Armazena resultado no cache"""
     try:
-        redis_client.setex(
-            f"megasena:{concurso}",
-            CACHE_EXPIRATION,
-            json.dumps(data)
-        )
+        redis_client.setex(f"megasena:{concurso}", CACHE_EXPIRATION, json.dumps(data))
     except:
         print(f"Erro ao armazenar cache para concurso {concurso}")
 
-
 app = Flask(__name__)
 
-
 def atualizar_estatisticas_jogo(stats, jogo, acertos):
-    """Atualiza as estatísticas de um jogo"""
     jogo_key = tuple(sorted(jogo))
     if jogo_key not in stats:
         stats[jogo_key] = {
@@ -104,11 +70,6 @@ def gerar_numeros():
     numeros = random.sample(range(1, 61), 6)
     return jsonify({'numeros': sorted(numeros)})
 
-
-
-
-
-
 @app.route('/conferir', methods=['POST'])
 def conferir():
     try:
@@ -117,7 +78,7 @@ def conferir():
         fim = int(data['fim'])
         jogos = data['jogos']
 
-        print(f"\nIniciando conferência de {len(jogos)} jogos")
+        print(f"Iniciando conferência de {len(jogos)} jogos")
         print(f"Período: concurso {inicio} até {fim}")
 
         resultados = {
@@ -126,7 +87,7 @@ def conferir():
                 'quatro': 0,
                 'cinco': 0,
                 'seis': 0,
-                'total_premios': 0  # Adicionando o campo para total
+                'total_premios': 0
             }
         }
 
@@ -134,36 +95,18 @@ def conferir():
 
         for concurso in range(inicio, fim + 1):
             try:
-                # Tenta buscar do cache primeiro
                 resultado = get_cached_result(concurso)
-                
-                # Se não está no cache, busca da API
                 if not resultado:
-                    print(f"Cache miss para concurso {concurso}")
                     response = requests.get(f"{API_BASE_URL}/megasena/{concurso}", timeout=5)
-                    
                     if response.status_code != 200:
-                        print(f"Erro ao buscar concurso {concurso}: Status {response.status_code}")
                         continue
-
-                    try:
-                        resultado = response.json()
-                        # Armazena no cache
-                        set_cached_result(concurso, resultado)
-                    except ValueError:
-                        print(f"Resposta inválida do servidor para concurso {concurso}")
-                        continue
-                else:
-                    print(f"Cache hit para concurso {concurso}")
+                    resultado = response.json()
+                    set_cached_result(concurso, resultado)
 
                 dezenas = [int(d) for d in resultado['dezenas']]
-                print(f"Dezenas sorteadas: {dezenas}")
 
-                for idx, jogo in enumerate(jogos):
-                    print(f"\nJogo {idx + 1}: {jogo}")
+                for jogo in jogos:
                     acertos = len(set(jogo) & set(dezenas))
-                    print(f"Acertos encontrados: {acertos}")
-
                     if acertos > 0:
                         jogos_stats = atualizar_estatisticas_jogo(jogos_stats, jogo, acertos)
 
@@ -174,7 +117,7 @@ def conferir():
                                 (acertos == 5 and premiacao['descricao'] == '5 acertos') or
                                 (acertos == 4 and premiacao['descricao'] == '4 acertos')):
                                 premio = premiacao['valorPremio']
-                                resultados['resumo']['total_premios'] += premio  # Soma o valor do prêmio
+                                resultados['resumo']['total_premios'] += premio
                                 break
 
                         if acertos == 4:
@@ -195,12 +138,9 @@ def conferir():
                         })
 
             except Exception as e:
-                print(f"Erro ao processar concurso {concurso}: {str(e)}")
                 continue
 
-        # Formatação do total para duas casas decimais
         resultados['resumo']['total_premios'] = round(resultados['resumo']['total_premios'], 2)
-
         jogos_stats_ordenados = sorted(
             [{'numeros': stats['numeros'], 
               'total': stats['total'], 
@@ -210,26 +150,15 @@ def conferir():
             reverse=True
         )[:10]
 
-        if not resultados['acertos']:
-            return jsonify({
-                'message': 'Nenhum prêmio encontrado nos concursos verificados',
-                'resumo': resultados['resumo'],  # Agora inclui total_premios
-                'jogos_stats': jogos_stats_ordenados
-            }), 200
-
         return jsonify({
             'acertos': resultados['acertos'],
-            'resumo': resultados['resumo'],  # Agora inclui total_premios
+            'resumo': resultados['resumo'],
             'jogos_stats': jogos_stats_ordenados
         })
 
     except Exception as e:
-        print(f"Erro geral: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-
-
-# Adicione esta função ao seu app.py
 @app.route('/processar_arquivo', methods=['POST'])
 def processar_arquivo():
     if 'file' not in request.files:
@@ -240,70 +169,336 @@ def processar_arquivo():
         return jsonify({'error': 'Nenhum arquivo selecionado'}), 400
 
     try:
-        # Lê o conteúdo do arquivo
-        content = file.read()
         jogos = []
         
         # Tenta processar como texto primeiro
-        try:
-            # Decodifica o conteúdo como texto
-            text_content = content.decode('utf-8')
-            lines = text_content.strip().split('\n')
-            
-            for line in lines:
-                # Remove espaços extras e divide os números
-                numbers = [int(n) for n in line.strip().split() if n.strip().isdigit()]
-                
-                # Valida os números
-                if (len(numbers) == 6 and 
-                    all(1 <= n <= 60 for n in numbers) and 
-                    len(set(numbers)) == 6):
-                    jogos.append(sorted(numbers))
-                    
-        except Exception as e:
-            print(f"Erro ao processar como texto: {str(e)}")
-            
-            # Se falhou como texto, tenta processar como Excel
+        if file.filename.endswith('.txt'):
             try:
-                # Converte o conteúdo para DataFrame
-                df = pd.read_excel(content)
+                content = file.read().decode('utf-8-sig')
+                
+                for line in content.strip().split('\n'):
+                    try:
+                        line = ''.join(c for c in line if c.isdigit() or c.isspace())
+                        numbers = [int(n) for n in line.strip().split() if n.strip()]
+                        
+                        if (len(numbers) == 6 and 
+                            all(1 <= n <= 60 for n in numbers) and 
+                            len(set(numbers)) == 6):
+                            jogos.append(sorted(numbers))
+                    except (ValueError, TypeError):
+                        continue
+            except Exception as txt_error:
+                print(f"Erro ao processar TXT: {str(txt_error)}")
+                        
+        # Se não é txt, tenta processar como Excel
+        elif file.filename.endswith(('.xlsx', '.xls')):
+            try:
+                content = file.read()
+                df = pd.read_excel(io.BytesIO(content))
                 
                 for _, row in df.iterrows():
-                    # Pega os primeiros 6 valores numéricos da linha
-                    numbers = [int(n) for n in row.values[:6] if isinstance(n, (int, float)) and 1 <= n <= 60]
+                    numbers = []
+                    for val in row.values[:6]:
+                        try:
+                            num = int(float(val))
+                            if 1 <= num <= 60:
+                                numbers.append(num)
+                        except (ValueError, TypeError):
+                            continue
                     
                     if len(numbers) == 6 and len(set(numbers)) == 6:
                         jogos.append(sorted(numbers))
-                        
             except Exception as excel_error:
-                print(f"Erro ao processar como Excel: {str(excel_error)}")
+                print(f"Erro ao processar Excel: {str(excel_error)}")
                 
+        else:
+            return jsonify({
+                'error': 'Formato de arquivo não suportado. Use .txt ou .xlsx'
+            }), 400
+            
         if not jogos:
-            return jsonify({'error': 'Nenhum jogo válido encontrado no arquivo'}), 400
+            return jsonify({
+                'error': 'Nenhum jogo válido encontrado no arquivo'
+            }), 400
             
         return jsonify({'jogos': jogos})
         
+    except UnicodeDecodeError:
+        return jsonify({
+            'error': 'Erro ao ler o arquivo. Certifique-se que é um arquivo de texto válido.'
+        }), 400
     except Exception as e:
+        print(f"Erro ao processar arquivo: {str(e)}")
+        return jsonify({
+            'error': 'Erro ao processar o arquivo. Verifique o formato e tente novamente.'
+        }), 500
+        
+
+@app.route('/exportar/<tipo>/<formato>', methods=['POST'])
+def exportar_dados(tipo, formato):
+    try:
+        data = request.json
+        if tipo == 'resumo-acertos':
+            return exportar_resumo_acertos(data, formato)
+        elif tipo == 'jogos-premiados':
+            return exportar_jogos_premiados(data, formato)
+        elif tipo == 'jogos-sorteados':
+            return exportar_jogos_sorteados(data, formato)
+        else:
+            return jsonify({'error': 'Tipo de exportação inválido'}), 400
+    except Exception as e:
+        print(f"Erro na exportação: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+def exportar_resumo_acertos(data, formato):
+    try:
+        # Criação do DataFrame com os dados fornecidos
+        df = pd.DataFrame({
+            'Tipo': ['4 Acertos', '5 Acertos', '6 Acertos', 'Total de Prêmios'],
+            'Quantidade': [
+                data['resumo']['quatro'],
+                data['resumo']['cinco'],
+                data['resumo']['seis'],
+                ''
+            ],
+            'Valor Total': [
+                data['resumo'].get('valor_quatro', 0),
+                data['resumo'].get('valor_cinco', 0),
+                data['resumo'].get('valor_seis', 0),
+                data['resumo'].get('total_premios', 0)
+            ]
+        })
 
+        # Exportação para formato Excel
+        if formato == 'xlsx':
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, sheet_name='Resumo de Acertos', index=False)
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='resumo_acertos.xlsx'
+            )
 
+        # Exportação para formato HTML
+        elif formato == 'html':
+            html_content = df.to_html(index=False, classes='table table-striped')
+            html = f'''
+            <html>
+            <head>
+                <style>
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
+                    th {{ background-color: #008751; color: white; }}
+                </style>
+            </head>
+            <body>
+                <h2>Resumo de Acertos</h2>
+                {html_content}
+            </body>
+            </html>
+            '''
+            return send_file(
+                io.BytesIO(html.encode()),
+                mimetype='text/html',
+                as_attachment=True,
+                download_name='resumo_acertos.html'
+            )
+        
+        # Caso o formato não seja suportado
+        else:
+            raise ValueError(f"Formato '{formato}' não suportado. Use 'xlsx' ou 'html'.")
 
+    except Exception as e:
+        raise Exception(f"Erro ao exportar resumo: {str(e)}")
+
+def exportar_jogos_premiados(data, formato):
+    try:
+        rows = []
+        for resultado in data['acertos']:
+            rows.append({
+                'Concurso': resultado['concurso'],
+                'Data': resultado['data'],
+                'Local': resultado['local'],
+                'Números Sorteados': ' '.join(str(n).zfill(2) for n in sorted(resultado['numeros_sorteados'])),
+                'Seu Jogo': ' '.join(str(n).zfill(2) for n in sorted(resultado['seus_numeros'])),
+                'Acertos': resultado['acertos'],
+                'Prêmio': f"R$ {resultado['premio']:,.2f}",
+                'Status': 'Premiado' if resultado['premio'] > 0 else 'Acumulado'
+            })
+        
+        df = pd.DataFrame(rows)
+        
+        if formato == 'xlsx':
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, sheet_name='Jogos Premiados', index=False)
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='jogos_premiados.xlsx'
+            )
+        
+        elif formato == 'html':
+            html_content = df.to_html(index=False, classes='table table-striped')
+            html = f'''
+            <html>
+            <head>
+                <style>
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
+                    th {{ background-color: #008751; color: white; }}
+                </style>
+            </head>
+            <body>
+                <h2>Jogos Premiados</h2>
+                {html_content}
+            </body>
+            </html>
+            '''
+            return send_file(
+                io.BytesIO(html.encode()),
+                mimetype='text/html',
+                as_attachment=True,
+                download_name='jogos_premiados.html'
+            )
+    except Exception as e:
+        raise Exception(f"Erro ao exportar jogos premiados: {str(e)}")
+        
+def exportar_jogos_sorteados(data, formato):
+    try:
+        rows = []
+        for jogo in data['jogos_stats']:
+            distribuicao = []
+            for i in range(1, 7):
+                if jogo['distribuicao'].get(i, 0) > 0:
+                    distribuicao.append(f"{i} pontos: {jogo['distribuicao'][i]}")
+            
+            rows.append({
+                'Jogo': ' '.join(str(n).zfill(2) for n in jogo['numeros']),
+                'Total': jogo['total'],
+                'Distribuição': ', '.join(distribuicao)
+            })
+        
+        df = pd.DataFrame(rows)
+        
+        if formato == 'xlsx':
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, sheet_name='Jogos Mais Sorteados', index=False)
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='jogos_sorteados.xlsx'
+            )
+        
+        elif formato == 'html':
+            html_content = df.to_html(index=False, classes='table table-striped')
+            html = f'''
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
+                    th {{ background-color: #008751; color: white; }}
+                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                    tr:hover {{ background-color: #ddd; }}
+                </style>
+            </head>
+            <body>
+                <h2>Jogos Mais Sorteados</h2>
+                {html_content}
+            </body>
+            </html>
+            '''
+            return send_file(
+                io.BytesIO(html.encode('utf-8')),
+                mimetype='text/html',
+                as_attachment=True,
+                download_name='jogos_sorteados.html'
+            )
+    except Exception as e:
+        raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
 
 if __name__ == '__main__':
-     app.run(debug=True)
+    try:
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host="0.0.0.0", port=port, debug=True)
+    except Exception as e:
+        print(f"Erro ao iniciar aplicação: {str(e)}")
 
+def exportar_jogos_sorteados(data, formato):
+    try:
+        # Prepara as linhas de dados
+        rows = []
+        for jogo in data['jogos_stats']:
+            distribuicao = []
+            # Monta a distribuição de acertos (1 a 6 pontos)
+            for i in range(1, 7):
+                if jogo['distribuicao'].get(i, 0) > 0:
+                    distribuicao.append(f"{i} pontos: {jogo['distribuicao'][i]}")
+            
+            # Adiciona cada jogo com suas estatísticas
+            rows.append({
+                'Jogo': ' '.join(str(n).zfill(2) for n in jogo['numeros']),
+                'Total': jogo['total'],
+                'Distribuição': ', '.join(distribuicao)
+            })
+        
+        # Cria DataFrame com os dados
+        df = pd.DataFrame(rows)
+        
+        # Exportação para Excel
+        if formato == 'xlsx':
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, sheet_name='Jogos Mais Sorteados', index=False)
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='jogos_sorteados.xlsx'
+            )
+        
+        # Exportação para HTML
+        elif formato == 'html':
+            html_content = df.to_html(index=False, classes='table table-striped')
+            html = f'''
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
+                    th {{ background-color: #008751; color: white; }}
+                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                    tr:hover {{ background-color: #ddd; }}
+                </style>
+            </head>
+            <body>
+                <h2>Jogos Mais Sorteados</h2>
+                {html_content}
+            </body>
+            </html>
+            '''
+            return send_file(
+                io.BytesIO(html.encode('utf-8')),
+                mimetype='text/html',
+                as_attachment=True,
+                download_name='jogos_sorteados.html'
+            )
+    except Exception as e:
+        raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
 
-"""
-     # Agora a parte de configuração da porta
-if __name__ == '__main__':
-     port = int(os.environ.get("PORT", 5000))  # Obtém a porta do ambiente ou usa 5000 como padrão
-     app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
-
-
-     # Agora a parte de configuração da porta
-if __name__ == '__main__':
-     port = int(os.environ.get("PORT", 10000))  # Obtém a porta do ambiente ou usa 5000 como padrão
-     app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
-"""
-
+#exportar_dados
+#exportar_resumo_acertos
+#exportar_jogos_premiados
+#exportar_jogos_sorteados

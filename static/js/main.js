@@ -2,9 +2,10 @@
 const jogosIncluidos = [];
 const jogosSelecionados = new Set();
 let conferenciaCancelada = false;
+let dadosUltimaConsulta = null;
 
 // Configuração tamanho do lote
-const TAMANHO_LOTE = 930; // Tamanho ideal para processamento
+const TAMANHO_LOTE = 930;
 
 // Função para atualizar o contador e mensagem
 function atualizarContadorJogos() {
@@ -14,7 +15,6 @@ function atualizarContadorJogos() {
         contadorElement.textContent = quantidade;
     }
 
-    // Atualiza o título com singular/plural
     const tituloJogos = document.querySelector('.jogos-incluidos h3');
     if (tituloJogos) {
         tituloJogos.textContent = `Jogos Incluídos (${quantidade} ${quantidade === 1 ? 'jogo' : 'jogos'})`;
@@ -120,11 +120,9 @@ async function processFile(file) {
 
             atualizarContadorJogos();
             alert(formatarMensagemJogos(jogosNovos, 'incluir'));
-
         } else {
             alert('Nenhum jogo válido encontrado no arquivo');
         }
-
     } catch (error) {
         console.error('Erro:', error);
         alert(`Erro ao processar arquivo: ${error.message}`);
@@ -132,7 +130,7 @@ async function processFile(file) {
         dropZone.classList.remove('processing');
     }
 }
-// Função para adicionar jogo na lista
+// Funções de manipulação de jogos
 function adicionarJogoNaLista(jogo) {
     const jogoItem = document.createElement('div');
     jogoItem.className = 'jogo-item';
@@ -173,7 +171,6 @@ function adicionarJogoNaLista(jogo) {
     document.getElementById('lista-jogos').appendChild(jogoItem);
 }
 
-// Função para remover jogo
 function removerJogo(jogo, jogoItem) {
     const index = jogosIncluidos.findIndex(j =>
         JSON.stringify(j) === JSON.stringify(jogo)
@@ -188,7 +185,6 @@ function removerJogo(jogo, jogoItem) {
     }
 }
 
-// Função para limpar todos os jogos
 function limparTodosJogos() {
     const quantidadeAtual = jogosIncluidos.length;
     if (quantidadeAtual === 0) {
@@ -206,7 +202,6 @@ function limparTodosJogos() {
     }
 }
 
-// Função para remover jogos selecionados
 function removerJogosSelecionados() {
     if (jogosSelecionados.size === 0) {
         alert('Selecione pelo menos um jogo para remover');
@@ -236,7 +231,6 @@ function removerJogosSelecionados() {
     }
 }
 
-// Função para atualizar botões de seleção
 function atualizarBotoesSeleção() {
     const removerSelecionadosBtn = document.getElementById('btn-remover-selecionados');
     if (removerSelecionadosBtn) {
@@ -244,7 +238,170 @@ function atualizarBotoesSeleção() {
     }
 }
 
-// Função principal - Inicialização do documento
+// Funções de exportação
+function toggleBotoesExportacao(mostrar) {
+    document.querySelectorAll('.export-buttons').forEach(div => {
+        if (mostrar) {
+            div.classList.remove('hidden');
+        } else {
+            div.classList.add('hidden');
+        }
+    });
+}
+
+async function exportarDados(tipo, formato) {
+    if (!dadosUltimaConsulta) {
+        alert('Faça uma consulta primeiro antes de exportar os dados.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/exportar/${tipo}/${formato}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(dadosUltimaConsulta)
+        });
+
+        if (!response.ok) {
+            throw new Error('Erro ao exportar dados');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${tipo}.${formato}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao exportar os dados. Tente novamente.');
+    }
+}
+
+// Funções de atualização de tabelas
+function atualizarTabelaJogosSorteados(jogos_stats) {
+    const tbody = document.querySelector('#tabela-jogos-sorteados tbody');
+    tbody.innerHTML = '';
+
+    jogos_stats.forEach(jogo => {
+        const tr = document.createElement('tr');
+        
+        const tdJogo = document.createElement('td');
+        tdJogo.innerHTML = `<div class="numeros-tabela">
+            ${jogo.numeros.map(n => 
+                `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`
+            ).join('')}
+        </div>`;
+        
+        const tdTotal = document.createElement('td');
+        tdTotal.textContent = `${jogo.total} vezes`;
+        
+        const tdDistribuicao = document.createElement('td');
+        const distribuicao = [];
+        for (let i = 1; i <= 6; i++) {
+            if (jogo.distribuicao[i] > 0) {
+                distribuicao.push(
+                    `<span class="distribuicao-badge">
+                        ${i} ponto${i !== 1 ? 's' : ''}: ${jogo.distribuicao[i]} vez${jogo.distribuicao[i] !== 1 ? 'es' : ''}
+                    </span>`
+                );
+            }
+        }
+        tdDistribuicao.innerHTML = distribuicao.join(' ');
+        
+        tr.appendChild(tdJogo);
+        tr.appendChild(tdTotal);
+        tr.appendChild(tdDistribuicao);
+        tbody.appendChild(tr);
+    });
+}
+
+function atualizarDetalhesETabela(data) {
+    const detalhesDiv = document.getElementById('detalhes-resultados');
+    const tabelaBody = document.getElementById('tabela-resultados');
+    
+    detalhesDiv.innerHTML = '';
+    tabelaBody.innerHTML = '';
+
+    data.acertos.forEach(resultado => {
+        // Adicionar na seção de detalhes
+        const resultadoDiv = document.createElement('div');
+        resultadoDiv.className = 'resultado-item';
+        resultadoDiv.innerHTML = `
+            <div class="resultado-header">
+                <h3>Concurso ${resultado.concurso} - ${resultado.data}</h3>
+                <p>${resultado.local || ''}</p>
+            </div>
+            <div class="resultado-numeros">
+                <div class="numeros-sorteados">
+                    <h4>Números Sorteados:</h4>
+                    <div class="numeros-lista">
+                        ${resultado.numeros_sorteados
+                            .sort((a, b) => a - b)
+                            .map(n => `<span class="numero-sorteado">${String(n).padStart(2, '0')}</span>`)
+                            .join(' ')}
+                    </div>
+                </div>
+                <div class="seu-jogo">
+                    <h4>Seu Jogo:</h4>
+                    <div class="numeros-lista">
+                        ${resultado.seus_numeros
+                            .sort((a, b) => a - b)
+                            .map(n => `<span class="numero-jogado ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
+                            .join(' ')}
+                    </div>
+                </div>
+                <div class="resultado-info">
+                    <p class="acertos-info">Acertos: <strong>${resultado.acertos}</strong></p>
+                    ${resultado.premio > 0 ? 
+                        `<p class="premio-info">Prêmio: <strong>R$ ${resultado.premio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>` 
+                        : ''}
+                </div>
+            </div>
+        `;
+        detalhesDiv.appendChild(resultadoDiv);
+
+        // Adicionar na tabela
+        const row = document.createElement('tr');
+        const numerosSorteados = resultado.numeros_sorteados
+            .sort((a, b) => a - b)
+            .map(n => `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`)
+            .join('');
+        const seusNumeros = resultado.seus_numeros
+            .sort((a, b) => a - b)
+            .map(n => `<span class="numero-tabela ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
+            .join('');
+        const premioText = resultado.premio > 0 
+            ? `R$ ${resultado.premio.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` 
+            : 'Não houve ganhadores';
+
+        row.innerHTML = `
+            <td>${resultado.concurso}</td>
+            <td>${resultado.data}</td>
+            <td>${resultado.local || '-'}</td>
+            <td><div class="numeros-tabela">${numerosSorteados}</div></td>
+            <td><div class="numeros-tabela">${seusNumeros}</div></td>
+            <td>${resultado.acertos}</td>
+            <td>${premioText}</td>
+            <td>${resultado.premio > 0 ? 'Premiado' : 'Acumulado'}</td>
+        `;
+        tabelaBody.appendChild(row);
+    });
+
+    // Atualiza o total no rodapé
+    const totalCell = document.querySelector('.total-premios');
+    if (totalCell && data.resumo.total_premios) {
+        totalCell.textContent = `R$ ${data.resumo.total_premios.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+    }
+}
+
+// Inicialização do documento
 document.addEventListener('DOMContentLoaded', function() {
     setupDragAndDrop();
     const numeros = document.querySelectorAll('.numero');
@@ -255,6 +412,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const listaJogos = document.getElementById('lista-jogos');
     const overlay = document.getElementById('overlay');
     const numerosSelecionados = new Set();
+
+    // Ocultar botões de exportação inicialmente
+    toggleBotoesExportacao(false);
 
     // Configuração do botão de cancelar conferência
     const btnCancelarConferencia = document.getElementById('btn-cancelar-conferencia');
@@ -271,6 +431,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Inicialização
     atualizarContadorJogos();
+
     // Eventos de seleção de números
     numeros.forEach(numero => {
         numero.addEventListener('click', () => {
@@ -319,7 +480,7 @@ document.addEventListener('DOMContentLoaded', function() {
         limparBtn.click();
     });
 
-    // Botão Conferir com processamento em lotes
+    // Botão Conferir
     conferirBtn.addEventListener('click', async () => {
         if (jogosIncluidos.length === 0) {
             alert('Inclua pelo menos um jogo antes de conferir!');
@@ -334,19 +495,15 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        // Oculta os botões de exportação antes de iniciar nova consulta
+        toggleBotoesExportacao// Oculta os botões de exportação antes de iniciar nova consulta
+        toggleBotoesExportacao(false);
+
         overlay.style.display = 'flex';
         conferenciaCancelada = false;
 
         // Calcula os lotes para processamento
         const lotes = calcularLotes(inicio, fim);
-        let resultadosAcumulados = {
-            acertos: [],
-            resumo: {
-                quatro: 0,
-                cinco: 0,
-                seis: 0
-            }
-        };
         try {
             for (const lote of lotes) {
                 if (conferenciaCancelada) break;
@@ -372,6 +529,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 const data = await response.json();
+                dadosUltimaConsulta = data; // Armazena os dados da última consulta
 
                 if (data.error) {
                     throw new Error(data.error);
@@ -382,7 +540,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     continue;
                 }
 
-                // Atualizar contagens
+                // Atualizar contagens e valores
                 document.getElementById('quatro-acertos').textContent = data.resumo.quatro;
                 document.getElementById('cinco-acertos').textContent = data.resumo.cinco;
                 document.getElementById('seis-acertos').textContent = data.resumo.seis;
@@ -408,7 +566,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 }
 
-                // Atualiza os valores nos cartões
+                // Atualizar os valores nos cartões
                 document.getElementById('quatro-valor').textContent = temQuadra && valorQuadra > 0 ? 
                     `R$ ${valorQuadra.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
                     'Não houve ganhadores';
@@ -421,96 +579,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     `R$ ${valorSena.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
                     'Não houve ganhadores';
 
-                // Atualizar detalhes visuais
-                const detalhesDiv = document.getElementById('detalhes-resultados');
-                detalhesDiv.innerHTML = '';
-
-                const tabelaBody = document.getElementById('tabela-resultados');
-                tabelaBody.innerHTML = ''; // Limpa a tabela
-
+                // Atualizar detalhes e tabela
                 if (data.acertos && data.acertos.length > 0) {
-                    data.acertos.forEach(resultado => {
-                        // Adicionar na seção de detalhes
-                        const resultadoDiv = document.createElement('div');
-                        resultadoDiv.className = 'resultado-item';
-                        resultadoDiv.innerHTML = `
-                            <div class="resultado-header">
-                                <h3>Concurso ${resultado.concurso} - ${resultado.data}</h3>
-                                <p>${resultado.local || ''}</p>
-                            </div>
-                            <div class="resultado-numeros">
-                                <div class="numeros-sorteados">
-                                    <h4>Números Sorteados:</h4>
-                                    <div class="numeros-lista">
-                                        ${resultado.numeros_sorteados
-                                            .sort((a, b) => a - b)
-                                            .map(n => `<span class="numero-sorteado">${String(n).padStart(2, '0')}</span>`)
-                                            .join(' ')}
-                                    </div>
-                                </div>
-                                <div class="seu-jogo">
-                                    <h4>Seu Jogo:</h4>
-                                    <div class="numeros-lista">
-                                        ${resultado.seus_numeros
-                                            .sort((a, b) => a - b)
-                                            .map(n => `<span class="numero-jogado ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
-                                            .join(' ')}
-                                    </div>
-                                </div>
-                                <div class="resultado-info">
-                                    <p class="acertos-info">Acertos: <strong>${resultado.acertos}</strong></p>
-                                    ${resultado.premio > 0 ? 
-                                        `<p class="premio-info">Prêmio: <strong>R$ ${resultado.premio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>` 
-                                        : ''}
-                                </div>
-                            </div>
-                        `;
-                        detalhesDiv.appendChild(resultadoDiv);
-
-                        // Adicionar na tabela
-                        const row = document.createElement('tr');
-                        const numerosSorteados = resultado.numeros_sorteados
-                            .sort((a, b) => a - b)
-                            .map(n => `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`)
-                            .join('');
-                        const seusNumeros = resultado.seus_numeros
-                            .sort((a, b) => a - b)
-                            .map(n => `<span class="numero-tabela ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
-                            .join('');
-                        const premioText = resultado.premio > 0 
-                            ? `R$ ${resultado.premio.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` 
-                            : 'Não houve ganhadores';
-
-                        row.innerHTML = `
-                            <td>${resultado.concurso}</td>
-                            <td>${resultado.data}</td>
-                            <td>${resultado.local || '-'}</td>
-                            <td><div class="numeros-tabela">${numerosSorteados}</div></td>
-                            <td><div class="numeros-tabela">${seusNumeros}</div></td>
-                            <td>${resultado.acertos}</td>
-                            <td>${premioText}</td>
-                            <td>${resultado.premio > 0 ? 'Premiado' : 'Acumulado'}</td>
-                        `;
-                        tabelaBody.appendChild(row);
-                        
-                    });
-                    // Atualiza o total no rodapé
-                    const totalCell = document.querySelector('.total-premios');
-                    if (totalCell) {
-                        totalCell.textContent = `R$ ${data.resumo.total_premios.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
-                    }
+                    atualizarDetalhesETabela(data);
+                    // Mostra os botões de exportação após processar com sucesso
+                    toggleBotoesExportacao(true);
                 } else {
-                    detalhesDiv.innerHTML = '<p class="sem-resultados">Nenhum prêmio encontrado para os jogos conferidos.</p>';
+                    toggleBotoesExportacao(false);
                 }
 
-                // Atualização da tabela de jogos sorteados
+                // Atualizar tabela de jogos sorteados
                 if (data.jogos_stats) {
-                    console.log('Dados recebidos para tabela de jogos mais sorteados:', data.jogos_stats);
                     atualizarTabelaJogosSorteados(data.jogos_stats);
                 }
             }
         } catch (error) {
             console.error('Erro detalhado:', error);
+            toggleBotoesExportacao(false);
             if (error.message.includes('<!DOCTYPE')) {
                 alert('O serviço está temporariamente indisponível. Por favor, tente novamente mais tarde ou reduza o intervalo de concursos.');
             } else {
@@ -521,43 +606,3 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
-
-function atualizarTabelaJogosSorteados(jogos_stats) {
-    const tbody = document.querySelector('#tabela-jogos-sorteados tbody');
-    tbody.innerHTML = '';
-
-    jogos_stats.forEach(jogo => {
-        const tr = document.createElement('tr');
-        
-        // Coluna do jogo
-        const tdJogo = document.createElement('td');
-        tdJogo.innerHTML = `<div class="numeros-tabela">
-            ${jogo.numeros.map(n => 
-                `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`
-            ).join('')}
-        </div>`;
-        
-        // Coluna do total
-        const tdTotal = document.createElement('td');
-        tdTotal.textContent = `${jogo.total} vezes`;
-        
-        // Coluna da distribuição
-        const tdDistribuicao = document.createElement('td');
-        const distribuicao = [];
-        for (let i = 1; i <= 6; i++) {
-            if (jogo.distribuicao[i] > 0) {
-                distribuicao.push(
-                    `<span class="distribuicao-badge">
-                        ${i} ponto${i !== 1 ? 's' : ''}: ${jogo.distribuicao[i]} vez${jogo.distribuicao[i] !== 1 ? 'es' : ''}
-                    </span>`
-                );
-            }
-        }
-        tdDistribuicao.innerHTML = distribuicao.join(' ');
-        
-        tr.appendChild(tdJogo);
-        tr.appendChild(tdTotal);
-        tr.appendChild(tdDistribuicao);
-        tbody.appendChild(tr);
-    });
-}
