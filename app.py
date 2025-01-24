@@ -1,7 +1,6 @@
-#ESTOU COM ESTE ERRO ME AJUDE
-
 
 from flask import Flask, render_template, request, jsonify, send_file
+from redis_config import redis_config
 import requests
 from datetime import datetime
 import os
@@ -13,75 +12,14 @@ import json
 import pandas as pd
 import io
 
-# Configuração do Redis - LOCALHOST
-# redis_client = redis.Redis(host='localhost', port=6379, db=0)
-# CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
-
-# Obtendo a URL do Redis a partir da variável de ambiente
-redis_url = os.getenv("REDIS_URL")
-
-# Conectar ao Redis
-r = redis.from_url(redis_url)
-
-@app.route('/')
-def index():
-    # Teste de comunicação com o Redis
-    r.set('foo', 'bar')
-    return f"Valor de 'foo': {r.get('foo')}"
-
-
-
-redis_client = redis.Redis(
-    host=os.getenv('REDIS_HOST'),
-    port=int(os.getenv('REDIS_PORT', 6379)),
-    password=os.getenv('REDIS_PASSWORD'),
-    db=int(os.getenv('REDIS_DB', 0))
-)
-
-try:
-    redis_client.ping()
-    print("Conexão bem-sucedida ao Redis!")
-except redis.ConnectionError as e:
-    print(f"Erro ao conectar ao Redis: {e}")
-
-
-redis_host = os.getenv("REDIS_HOST", "localhost")
-redis_port = os.getenv("REDIS_PORT", 6379)
-redis_password = os.getenv("REDIS_PASSWORD", None)
-
-try:
-    redis_client = redis.StrictRedis(
-        host=redis_host,
-        port=redis_port,
-        password=redis_password,
-        decode_responses=True
-    )
-    redis_client.ping()
-    print("Conexão bem-sucedida ao Redis!")
-except Exception as e:
-    print(f"Erro ao conectar ao Redis: {e}")
-
-
-
-
-
-# Funções auxiliares para o cache
-def get_cached_result(concurso):
-    try:
-        cached = redis_client.get(f"megasena:{concurso}")
-        if cached:
-            return json.loads(cached)
-    except:
-        print(f"Erro ao buscar cache para concurso {concurso}")
-    return None
-
-def set_cached_result(concurso, data):
-    try:
-        redis_client.setex(f"megasena:{concurso}", CACHE_EXPIRATION, json.dumps(data))
-    except:
-        print(f"Erro ao armazenar cache para concurso {concurso}")
 
 app = Flask(__name__)
+
+def get_cached_result(concurso):
+    return redis_config.get_cached_result(concurso)
+
+def set_cached_result(concurso, data):
+    return redis_config.set_cached_result(concurso, data)
 
 def atualizar_estatisticas_jogo(stats, jogo, acertos):
     jogo_key = tuple(sorted(jogo))
