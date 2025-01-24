@@ -606,3 +606,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+//ALTERADO 24/01/2025
+// Função para calcular lotes
+function calcularLotes(inicio, fim) {
+    const lotes = [];
+    for (let i = inicio; i <= fim; i += TAMANHO_LOTE) {
+        const loteFim = Math.min(i + TAMANHO_LOTE - 1, fim);
+        lotes.push({inicio: i, fim: loteFim});
+    }
+    return lotes;
+}

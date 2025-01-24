@@ -427,12 +427,7 @@ def exportar_jogos_sorteados(data, formato):
     except Exception as e:
         raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
 
-if __name__ == '__main__':
-    try:
-        port = int(os.environ.get("PORT", 5000))
-        app.run(host="0.0.0.0", port=port, debug=True)
-    except Exception as e:
-        print(f"Erro ao iniciar aplicação: {str(e)}")
+
 
 def exportar_jogos_sorteados(data, formato):
     try:
@@ -497,6 +492,12 @@ def exportar_jogos_sorteados(data, formato):
             )
     except Exception as e:
         raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
 
 #exportar_dados
 #exportar_resumo_acertos
