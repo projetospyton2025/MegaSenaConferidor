@@ -13,9 +13,22 @@ import json
 import pandas as pd
 import io
 
-# Configuração do Redis
-redis_client = redis.Redis(host='localhost', port=6379, db=0)
+# Configuração do Redis - LOCALHOST
+# redis_client = redis.Redis(host='localhost', port=6379, db=0)
+# CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
+
+
+# Configuração do Redis usando a URL completa
+redis_client = redis.from_url('redis://default:B058xThhTvAbptQa0s25EAGk7A5u473O@redis-13833.c336.samerica-east1-1.gce.redns.redis-cloud.com:13833')
 CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
+
+try:
+    redis_client.ping()
+    print("Conexão bem-sucedida ao Redis!")
+except redis.ConnectionError as e:
+    print(f"Erro ao conectar ao Redis: {e}")
+
+
 
 # Funções auxiliares para o cache
 def get_cached_result(concurso):
@@ -493,7 +506,7 @@ def exportar_jogos_sorteados(data, formato):
     except Exception as e:
         raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
 
-"""
+""" LOCALHOST
 if __name__ == '__main__':
     app.run(debug=True)
 """
