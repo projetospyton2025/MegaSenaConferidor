@@ -17,9 +17,19 @@ import io
 # redis_client = redis.Redis(host='localhost', port=6379, db=0)
 # CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
 
-# Conectar ao Redis usando a URL fornecida
-redis_url = "redis://default:B058xThhTvAbptQa0s25EAGk7A5u473O@redis-13833.c336.samerica-east1-1.gce.redns.redis-cloud.com:13833"
-redis_client = redis.from_url(redis_url)
+# Obtendo a URL do Redis a partir da variável de ambiente
+redis_url = os.getenv("REDIS_URL")
+
+# Conectar ao Redis
+r = redis.from_url(redis_url)
+
+@app.route('/')
+def index():
+    # Teste de comunicação com o Redis
+    r.set('foo', 'bar')
+    return f"Valor de 'foo': {r.get('foo')}"
+
+
 
 redis_client = redis.Redis(
     host=os.getenv('REDIS_HOST'),
