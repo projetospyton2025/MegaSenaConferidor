@@ -17,10 +17,17 @@ import io
 # redis_client = redis.Redis(host='localhost', port=6379, db=0)
 # CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
 
+import os
+import redis
 
-# Configuração do Redis usando a URL completa
-redis_client = redis.from_url('redis://default:B058xThhTvAbptQa0s25EAGk7A5u473O@redis-13833.c336.samerica-east1-1.gce.redns.redis-cloud.com:13833')
-CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
+redis_client = redis.Redis(
+    host=os.getenv('REDIS_HOST'),
+    port=int(os.getenv('REDIS_PORT', 6379)),
+    password=os.getenv('REDIS_PASSWORD'),
+    db=int(os.getenv('REDIS_DB', 0))
+)
+
+
 
 try:
     redis_client.ping()
