@@ -17,8 +17,6 @@ import io
 # redis_client = redis.Redis(host='localhost', port=6379, db=0)
 # CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
 
-import os
-import redis
 
 redis_client = redis.Redis(
     host=os.getenv('REDIS_HOST'),
@@ -27,13 +25,30 @@ redis_client = redis.Redis(
     db=int(os.getenv('REDIS_DB', 0))
 )
 
-
-
 try:
     redis_client.ping()
     print("Conexão bem-sucedida ao Redis!")
 except redis.ConnectionError as e:
     print(f"Erro ao conectar ao Redis: {e}")
+
+
+redis_host = os.getenv("REDIS_HOST", "localhost")
+redis_port = os.getenv("REDIS_PORT", 6379)
+redis_password = os.getenv("REDIS_PASSWORD", None)
+
+try:
+    redis_client = redis.StrictRedis(
+        host=redis_host,
+        port=redis_port,
+        password=redis_password,
+        decode_responses=True
+    )
+    redis_client.ping()
+    print("Conexão bem-sucedida ao Redis!")
+except Exception as e:
+    print(f"Erro ao conectar ao Redis: {e}")
+
+
 
 
 
