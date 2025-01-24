@@ -1,3 +1,24 @@
+observe este código
+Ele efetua a conferencia do primeiro concurso ao ultimo da megasena correto?
+Afim de não sobrecarregar o sistema ele divide a conferência em
+LOTES
+Lote 1: concursos 1-930
+Lote 2: concursos 931-1860
+Lote 3: concursos 1861-2790
+Lote 4: concursos 2791-2816 (ULTIMO CONCURSO)
+
+
+
+O USUARIO NÃO PRECISA SABER QUE A CONFERÊNCIA ESTA SENDO FEITA EM BLOCOS...
+ENTÃO O SISTEMA DEVE PEGAR O ULTIMO CONCURSO E DIVIDIR EM LOTES DE PELO MENOS 930 PARA EFETUAR A CONFERENCIA 
+MAS O USUARIO NÃO PRECISA FICAR DIGITANDO 1-930, 931-1860 E ASSIM SUCESSIVMENTE
+BASTA O SISTEME VER QUAL É O MONTANDO DE JOGOS.. DIVIDIR EM BACKGROUND OS LOTES E EFETUAR A CONFERENCIA TOTAL
+O USUARIO SOMENTE TERÁ O TRABALHO DE INFORMAR EM QUAL CONCURSO ELE QUER COMEÇAR E FINALIZAR.. 
+
+E NO FINAL O CÓDIGO TRAZER TODA A CONFERENCIA ATUALIZADA, SOMADA, UNIFICADA PARA TODOS OS CONCURSOR CONFERIDO.. 
+
+
+
 # Project Structure:
 MegaSenaConferidor/
 ├── requirements.txt
@@ -21,45 +42,21 @@ aiohttp --only-binary=:all: # Para requisições assíncronas novo
 asyncio==3.4.3 # Para processar múltiplas requisições novo
 redis #novo
 
-# app.py
-# Valores que podem ser alterados... 
 
-""" MAIN.JS
-// Adicione esta validação
-    const intervalo = fim - inicio;
-    if (intervalo > 100) { //Conferência de no máximo 100 por vez
-        const confirmacao = confirm('Para melhor desempenho, recomendamos conferir no máximo 100 concursos por vez. Deseja continuar mesmo assim?');
-        if (!confirmacao) {
-            return;
-        }
-    }
+#ESTOU COM ESTE ERRO ME AJUDE
 
-   // Adicione esta validação
-    const intervalo = fim - inicio;
-    if (intervalo > 3000) { //Conferência de no máximo 3000 por vez 
 
-// APP.PY
-# Ordena as estatísticas de jogos
-        jogos_stats_ordenados = sorted(
-            [{'numeros': stats['numeros'], 
-              'total': stats['total'], 
-              'distribuicao': stats['distribuicao']} 
-             for stats in jogos_stats.values()],
-            key=lambda x: x['total'],
-            reverse=True
-        )[:10]  # Retorna apenas os 10 mais frequentes
-"""
-
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import requests
 from datetime import datetime
 import os
-import random  # Adicione esta linha
+import random
 import aiohttp
 import asyncio
 import redis
 import json
-
+import pandas as pd
+import io
 
 # Configuração do Redis
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
@@ -67,7 +64,6 @@ CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
 
 # Funções auxiliares para o cache
 def get_cached_result(concurso):
-    """Tenta obter resultado do cache"""
     try:
         cached = redis_client.get(f"megasena:{concurso}")
         if cached:
@@ -77,22 +73,14 @@ def get_cached_result(concurso):
     return None
 
 def set_cached_result(concurso, data):
-    """Armazena resultado no cache"""
     try:
-        redis_client.setex(
-            f"megasena:{concurso}",
-            CACHE_EXPIRATION,
-            json.dumps(data)
-        )
+        redis_client.setex(f"megasena:{concurso}", CACHE_EXPIRATION, json.dumps(data))
     except:
         print(f"Erro ao armazenar cache para concurso {concurso}")
 
-
 app = Flask(__name__)
 
-
 def atualizar_estatisticas_jogo(stats, jogo, acertos):
-    """Atualiza as estatísticas de um jogo"""
     jogo_key = tuple(sorted(jogo))
     if jogo_key not in stats:
         stats[jogo_key] = {
@@ -127,11 +115,6 @@ def gerar_numeros():
     numeros = random.sample(range(1, 61), 6)
     return jsonify({'numeros': sorted(numeros)})
 
-
-
-
-
-
 @app.route('/conferir', methods=['POST'])
 def conferir():
     try:
@@ -140,7 +123,7 @@ def conferir():
         fim = int(data['fim'])
         jogos = data['jogos']
 
-        print(f"\nIniciando conferência de {len(jogos)} jogos")
+        print(f"Iniciando conferência de {len(jogos)} jogos")
         print(f"Período: concurso {inicio} até {fim}")
 
         resultados = {
@@ -149,7 +132,7 @@ def conferir():
                 'quatro': 0,
                 'cinco': 0,
                 'seis': 0,
-                'total_premios': 0  # Adicionando o campo para total
+                'total_premios': 0
             }
         }
 
@@ -157,36 +140,18 @@ def conferir():
 
         for concurso in range(inicio, fim + 1):
             try:
-                # Tenta buscar do cache primeiro
                 resultado = get_cached_result(concurso)
-                
-                # Se não está no cache, busca da API
                 if not resultado:
-                    print(f"Cache miss para concurso {concurso}")
                     response = requests.get(f"{API_BASE_URL}/megasena/{concurso}", timeout=5)
-                    
                     if response.status_code != 200:
-                        print(f"Erro ao buscar concurso {concurso}: Status {response.status_code}")
                         continue
-
-                    try:
-                        resultado = response.json()
-                        # Armazena no cache
-                        set_cached_result(concurso, resultado)
-                    except ValueError:
-                        print(f"Resposta inválida do servidor para concurso {concurso}")
-                        continue
-                else:
-                    print(f"Cache hit para concurso {concurso}")
+                    resultado = response.json()
+                    set_cached_result(concurso, resultado)
 
                 dezenas = [int(d) for d in resultado['dezenas']]
-                print(f"Dezenas sorteadas: {dezenas}")
 
-                for idx, jogo in enumerate(jogos):
-                    print(f"\nJogo {idx + 1}: {jogo}")
+                for jogo in jogos:
                     acertos = len(set(jogo) & set(dezenas))
-                    print(f"Acertos encontrados: {acertos}")
-
                     if acertos > 0:
                         jogos_stats = atualizar_estatisticas_jogo(jogos_stats, jogo, acertos)
 
@@ -197,7 +162,7 @@ def conferir():
                                 (acertos == 5 and premiacao['descricao'] == '5 acertos') or
                                 (acertos == 4 and premiacao['descricao'] == '4 acertos')):
                                 premio = premiacao['valorPremio']
-                                resultados['resumo']['total_premios'] += premio  # Soma o valor do prêmio
+                                resultados['resumo']['total_premios'] += premio
                                 break
 
                         if acertos == 4:
@@ -218,12 +183,9 @@ def conferir():
                         })
 
             except Exception as e:
-                print(f"Erro ao processar concurso {concurso}: {str(e)}")
                 continue
 
-        # Formatação do total para duas casas decimais
         resultados['resumo']['total_premios'] = round(resultados['resumo']['total_premios'], 2)
-
         jogos_stats_ordenados = sorted(
             [{'numeros': stats['numeros'], 
               'total': stats['total'], 
@@ -233,26 +195,15 @@ def conferir():
             reverse=True
         )[:10]
 
-        if not resultados['acertos']:
-            return jsonify({
-                'message': 'Nenhum prêmio encontrado nos concursos verificados',
-                'resumo': resultados['resumo'],  # Agora inclui total_premios
-                'jogos_stats': jogos_stats_ordenados
-            }), 200
-
         return jsonify({
             'acertos': resultados['acertos'],
-            'resumo': resultados['resumo'],  # Agora inclui total_premios
+            'resumo': resultados['resumo'],
             'jogos_stats': jogos_stats_ordenados
         })
 
     except Exception as e:
-        print(f"Erro geral: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-
-
-# Adicione esta função ao seu app.py
 @app.route('/processar_arquivo', methods=['POST'])
 def processar_arquivo():
     if 'file' not in request.files:
@@ -263,80 +214,348 @@ def processar_arquivo():
         return jsonify({'error': 'Nenhum arquivo selecionado'}), 400
 
     try:
-        # Lê o conteúdo do arquivo
-        content = file.read()
         jogos = []
         
         # Tenta processar como texto primeiro
-        try:
-            # Decodifica o conteúdo como texto
-            text_content = content.decode('utf-8')
-            lines = text_content.strip().split('\n')
-            
-            for line in lines:
-                # Remove espaços extras e divide os números
-                numbers = [int(n) for n in line.strip().split() if n.strip().isdigit()]
-                
-                # Valida os números
-                if (len(numbers) == 6 and 
-                    all(1 <= n <= 60 for n in numbers) and 
-                    len(set(numbers)) == 6):
-                    jogos.append(sorted(numbers))
-                    
-        except Exception as e:
-            print(f"Erro ao processar como texto: {str(e)}")
-            
-            # Se falhou como texto, tenta processar como Excel
+        if file.filename.endswith('.txt'):
             try:
-                # Converte o conteúdo para DataFrame
-                df = pd.read_excel(content)
+                content = file.read().decode('utf-8-sig')
+                
+                for line in content.strip().split('\n'):
+                    try:
+                        line = ''.join(c for c in line if c.isdigit() or c.isspace())
+                        numbers = [int(n) for n in line.strip().split() if n.strip()]
+                        
+                        if (len(numbers) == 6 and 
+                            all(1 <= n <= 60 for n in numbers) and 
+                            len(set(numbers)) == 6):
+                            jogos.append(sorted(numbers))
+                    except (ValueError, TypeError):
+                        continue
+            except Exception as txt_error:
+                print(f"Erro ao processar TXT: {str(txt_error)}")
+                        
+        # Se não é txt, tenta processar como Excel
+        elif file.filename.endswith(('.xlsx', '.xls')):
+            try:
+                content = file.read()
+                df = pd.read_excel(io.BytesIO(content))
                 
                 for _, row in df.iterrows():
-                    # Pega os primeiros 6 valores numéricos da linha
-                    numbers = [int(n) for n in row.values[:6] if isinstance(n, (int, float)) and 1 <= n <= 60]
+                    numbers = []
+                    for val in row.values[:6]:
+                        try:
+                            num = int(float(val))
+                            if 1 <= num <= 60:
+                                numbers.append(num)
+                        except (ValueError, TypeError):
+                            continue
                     
                     if len(numbers) == 6 and len(set(numbers)) == 6:
                         jogos.append(sorted(numbers))
-                        
             except Exception as excel_error:
-                print(f"Erro ao processar como Excel: {str(excel_error)}")
+                print(f"Erro ao processar Excel: {str(excel_error)}")
                 
+        else:
+            return jsonify({
+                'error': 'Formato de arquivo não suportado. Use .txt ou .xlsx'
+            }), 400
+            
         if not jogos:
-            return jsonify({'error': 'Nenhum jogo válido encontrado no arquivo'}), 400
+            return jsonify({
+                'error': 'Nenhum jogo válido encontrado no arquivo'
+            }), 400
             
         return jsonify({'jogos': jogos})
         
+    except UnicodeDecodeError:
+        return jsonify({
+            'error': 'Erro ao ler o arquivo. Certifique-se que é um arquivo de texto válido.'
+        }), 400
     except Exception as e:
+        print(f"Erro ao processar arquivo: {str(e)}")
+        return jsonify({
+            'error': 'Erro ao processar o arquivo. Verifique o formato e tente novamente.'
+        }), 500
+        
+
+@app.route('/exportar/<tipo>/<formato>', methods=['POST'])
+def exportar_dados(tipo, formato):
+    try:
+        data = request.json
+        if tipo == 'resumo-acertos':
+            return exportar_resumo_acertos(data, formato)
+        elif tipo == 'jogos-premiados':
+            return exportar_jogos_premiados(data, formato)
+        elif tipo == 'jogos-sorteados':
+            return exportar_jogos_sorteados(data, formato)
+        else:
+            return jsonify({'error': 'Tipo de exportação inválido'}), 400
+    except Exception as e:
+        print(f"Erro na exportação: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+def exportar_resumo_acertos(data, formato):
+    try:
+        # Criação do DataFrame com os dados fornecidos
+        df = pd.DataFrame({
+            'Tipo': ['4 Acertos', '5 Acertos', '6 Acertos', 'Total de Prêmios'],
+            'Quantidade': [
+                data['resumo']['quatro'],
+                data['resumo']['cinco'],
+                data['resumo']['seis'],
+                ''
+            ],
+            'Valor Total': [
+                data['resumo'].get('valor_quatro', 0),
+                data['resumo'].get('valor_cinco', 0),
+                data['resumo'].get('valor_seis', 0),
+                data['resumo'].get('total_premios', 0)
+            ]
+        })
 
+        # Exportação para formato Excel
+        if formato == 'xlsx':
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, sheet_name='Resumo de Acertos', index=False)
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='resumo_acertos.xlsx'
+            )
 
+        # Exportação para formato HTML
+        elif formato == 'html':
+            html_content = df.to_html(index=False, classes='table table-striped')
+            html = f'''
+            <html>
+            <head>
+                <style>
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
+                    th {{ background-color: #008751; color: white; }}
+                </style>
+            </head>
+            <body>
+                <h2>Resumo de Acertos</h2>
+                {html_content}
+            </body>
+            </html>
+            '''
+            return send_file(
+                io.BytesIO(html.encode()),
+                mimetype='text/html',
+                as_attachment=True,
+                download_name='resumo_acertos.html'
+            )
+        
+        # Caso o formato não seja suportado
+        else:
+            raise ValueError(f"Formato '{formato}' não suportado. Use 'xlsx' ou 'html'.")
 
+    except Exception as e:
+        raise Exception(f"Erro ao exportar resumo: {str(e)}")
+
+def exportar_jogos_premiados(data, formato):
+    try:
+        rows = []
+        for resultado in data['acertos']:
+            rows.append({
+                'Concurso': resultado['concurso'],
+                'Data': resultado['data'],
+                'Local': resultado['local'],
+                'Números Sorteados': ' '.join(str(n).zfill(2) for n in sorted(resultado['numeros_sorteados'])),
+                'Seu Jogo': ' '.join(str(n).zfill(2) for n in sorted(resultado['seus_numeros'])),
+                'Acertos': resultado['acertos'],
+                'Prêmio': f"R$ {resultado['premio']:,.2f}",
+                'Status': 'Premiado' if resultado['premio'] > 0 else 'Acumulado'
+            })
+        
+        df = pd.DataFrame(rows)
+        
+        if formato == 'xlsx':
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, sheet_name='Jogos Premiados', index=False)
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='jogos_premiados.xlsx'
+            )
+        
+        elif formato == 'html':
+            html_content = df.to_html(index=False, classes='table table-striped')
+            html = f'''
+            <html>
+            <head>
+                <style>
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
+                    th {{ background-color: #008751; color: white; }}
+                </style>
+            </head>
+            <body>
+                <h2>Jogos Premiados</h2>
+                {html_content}
+            </body>
+            </html>
+            '''
+            return send_file(
+                io.BytesIO(html.encode()),
+                mimetype='text/html',
+                as_attachment=True,
+                download_name='jogos_premiados.html'
+            )
+    except Exception as e:
+        raise Exception(f"Erro ao exportar jogos premiados: {str(e)}")
+        
+def exportar_jogos_sorteados(data, formato):
+    try:
+        rows = []
+        for jogo in data['jogos_stats']:
+            distribuicao = []
+            for i in range(1, 7):
+                if jogo['distribuicao'].get(i, 0) > 0:
+                    distribuicao.append(f"{i} pontos: {jogo['distribuicao'][i]}")
+            
+            rows.append({
+                'Jogo': ' '.join(str(n).zfill(2) for n in jogo['numeros']),
+                'Total': jogo['total'],
+                'Distribuição': ', '.join(distribuicao)
+            })
+        
+        df = pd.DataFrame(rows)
+        
+        if formato == 'xlsx':
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, sheet_name='Jogos Mais Sorteados', index=False)
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='jogos_sorteados.xlsx'
+            )
+        
+        elif formato == 'html':
+            html_content = df.to_html(index=False, classes='table table-striped')
+            html = f'''
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
+                    th {{ background-color: #008751; color: white; }}
+                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                    tr:hover {{ background-color: #ddd; }}
+                </style>
+            </head>
+            <body>
+                <h2>Jogos Mais Sorteados</h2>
+                {html_content}
+            </body>
+            </html>
+            '''
+            return send_file(
+                io.BytesIO(html.encode('utf-8')),
+                mimetype='text/html',
+                as_attachment=True,
+                download_name='jogos_sorteados.html'
+            )
+    except Exception as e:
+        raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
 
 if __name__ == '__main__':
-     app.run(debug=True)
+    try:
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host="0.0.0.0", port=port, debug=True)
+    except Exception as e:
+        print(f"Erro ao iniciar aplicação: {str(e)}")
 
+def exportar_jogos_sorteados(data, formato):
+    try:
+        # Prepara as linhas de dados
+        rows = []
+        for jogo in data['jogos_stats']:
+            distribuicao = []
+            # Monta a distribuição de acertos (1 a 6 pontos)
+            for i in range(1, 7):
+                if jogo['distribuicao'].get(i, 0) > 0:
+                    distribuicao.append(f"{i} pontos: {jogo['distribuicao'][i]}")
+            
+            # Adiciona cada jogo com suas estatísticas
+            rows.append({
+                'Jogo': ' '.join(str(n).zfill(2) for n in jogo['numeros']),
+                'Total': jogo['total'],
+                'Distribuição': ', '.join(distribuicao)
+            })
+        
+        # Cria DataFrame com os dados
+        df = pd.DataFrame(rows)
+        
+        # Exportação para Excel
+        if formato == 'xlsx':
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, sheet_name='Jogos Mais Sorteados', index=False)
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name='jogos_sorteados.xlsx'
+            )
+        
+        # Exportação para HTML
+        elif formato == 'html':
+            html_content = df.to_html(index=False, classes='table table-striped')
+            html = f'''
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
+                    th {{ background-color: #008751; color: white; }}
+                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                    tr:hover {{ background-color: #ddd; }}
+                </style>
+            </head>
+            <body>
+                <h2>Jogos Mais Sorteados</h2>
+                {html_content}
+            </body>
+            </html>
+            '''
+            return send_file(
+                io.BytesIO(html.encode('utf-8')),
+                mimetype='text/html',
+                as_attachment=True,
+                download_name='jogos_sorteados.html'
+            )
+    except Exception as e:
+        raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
 
-"""
-     # Agora a parte de configuração da porta
-if __name__ == '__main__':
-     port = int(os.environ.get("PORT", 5000))  # Obtém a porta do ambiente ou usa 5000 como padrão
-     app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
-
-
-     # Agora a parte de configuração da porta
-if __name__ == '__main__':
-     port = int(os.environ.get("PORT", 10000))  # Obtém a porta do ambiente ou usa 5000 como padrão
-     app.run(host="0.0.0.0", port=port)  # Inicia o servidor Flask na porta correta
-"""
+#exportar_dados
+#exportar_resumo_acertos
+#exportar_jogos_premiados
+#exportar_jogos_sorteados
 
 // Variáveis globais
 const jogosIncluidos = [];
 const jogosSelecionados = new Set();
 let conferenciaCancelada = false;
+let dadosUltimaConsulta = null;
 
 // Configuração tamanho do lote
-const TAMANHO_LOTE = 930; // Tamanho ideal para processamento
+const TAMANHO_LOTE = 930;
 
 // Função para atualizar o contador e mensagem
 function atualizarContadorJogos() {
@@ -346,7 +565,6 @@ function atualizarContadorJogos() {
         contadorElement.textContent = quantidade;
     }
 
-    // Atualiza o título com singular/plural
     const tituloJogos = document.querySelector('.jogos-incluidos h3');
     if (tituloJogos) {
         tituloJogos.textContent = `Jogos Incluídos (${quantidade} ${quantidade === 1 ? 'jogo' : 'jogos'})`;
@@ -452,11 +670,9 @@ async function processFile(file) {
 
             atualizarContadorJogos();
             alert(formatarMensagemJogos(jogosNovos, 'incluir'));
-
         } else {
             alert('Nenhum jogo válido encontrado no arquivo');
         }
-
     } catch (error) {
         console.error('Erro:', error);
         alert(`Erro ao processar arquivo: ${error.message}`);
@@ -464,7 +680,7 @@ async function processFile(file) {
         dropZone.classList.remove('processing');
     }
 }
-// Função para adicionar jogo na lista
+// Funções de manipulação de jogos
 function adicionarJogoNaLista(jogo) {
     const jogoItem = document.createElement('div');
     jogoItem.className = 'jogo-item';
@@ -505,7 +721,6 @@ function adicionarJogoNaLista(jogo) {
     document.getElementById('lista-jogos').appendChild(jogoItem);
 }
 
-// Função para remover jogo
 function removerJogo(jogo, jogoItem) {
     const index = jogosIncluidos.findIndex(j =>
         JSON.stringify(j) === JSON.stringify(jogo)
@@ -520,7 +735,6 @@ function removerJogo(jogo, jogoItem) {
     }
 }
 
-// Função para limpar todos os jogos
 function limparTodosJogos() {
     const quantidadeAtual = jogosIncluidos.length;
     if (quantidadeAtual === 0) {
@@ -538,7 +752,6 @@ function limparTodosJogos() {
     }
 }
 
-// Função para remover jogos selecionados
 function removerJogosSelecionados() {
     if (jogosSelecionados.size === 0) {
         alert('Selecione pelo menos um jogo para remover');
@@ -568,7 +781,6 @@ function removerJogosSelecionados() {
     }
 }
 
-// Função para atualizar botões de seleção
 function atualizarBotoesSeleção() {
     const removerSelecionadosBtn = document.getElementById('btn-remover-selecionados');
     if (removerSelecionadosBtn) {
@@ -576,7 +788,170 @@ function atualizarBotoesSeleção() {
     }
 }
 
-// Função principal - Inicialização do documento
+// Funções de exportação
+function toggleBotoesExportacao(mostrar) {
+    document.querySelectorAll('.export-buttons').forEach(div => {
+        if (mostrar) {
+            div.classList.remove('hidden');
+        } else {
+            div.classList.add('hidden');
+        }
+    });
+}
+
+async function exportarDados(tipo, formato) {
+    if (!dadosUltimaConsulta) {
+        alert('Faça uma consulta primeiro antes de exportar os dados.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/exportar/${tipo}/${formato}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(dadosUltimaConsulta)
+        });
+
+        if (!response.ok) {
+            throw new Error('Erro ao exportar dados');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${tipo}.${formato}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao exportar os dados. Tente novamente.');
+    }
+}
+
+// Funções de atualização de tabelas
+function atualizarTabelaJogosSorteados(jogos_stats) {
+    const tbody = document.querySelector('#tabela-jogos-sorteados tbody');
+    tbody.innerHTML = '';
+
+    jogos_stats.forEach(jogo => {
+        const tr = document.createElement('tr');
+        
+        const tdJogo = document.createElement('td');
+        tdJogo.innerHTML = `<div class="numeros-tabela">
+            ${jogo.numeros.map(n => 
+                `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`
+            ).join('')}
+        </div>`;
+        
+        const tdTotal = document.createElement('td');
+        tdTotal.textContent = `${jogo.total} vezes`;
+        
+        const tdDistribuicao = document.createElement('td');
+        const distribuicao = [];
+        for (let i = 1; i <= 6; i++) {
+            if (jogo.distribuicao[i] > 0) {
+                distribuicao.push(
+                    `<span class="distribuicao-badge">
+                        ${i} ponto${i !== 1 ? 's' : ''}: ${jogo.distribuicao[i]} vez${jogo.distribuicao[i] !== 1 ? 'es' : ''}
+                    </span>`
+                );
+            }
+        }
+        tdDistribuicao.innerHTML = distribuicao.join(' ');
+        
+        tr.appendChild(tdJogo);
+        tr.appendChild(tdTotal);
+        tr.appendChild(tdDistribuicao);
+        tbody.appendChild(tr);
+    });
+}
+
+function atualizarDetalhesETabela(data) {
+    const detalhesDiv = document.getElementById('detalhes-resultados');
+    const tabelaBody = document.getElementById('tabela-resultados');
+    
+    detalhesDiv.innerHTML = '';
+    tabelaBody.innerHTML = '';
+
+    data.acertos.forEach(resultado => {
+        // Adicionar na seção de detalhes
+        const resultadoDiv = document.createElement('div');
+        resultadoDiv.className = 'resultado-item';
+        resultadoDiv.innerHTML = `
+            <div class="resultado-header">
+                <h3>Concurso ${resultado.concurso} - ${resultado.data}</h3>
+                <p>${resultado.local || ''}</p>
+            </div>
+            <div class="resultado-numeros">
+                <div class="numeros-sorteados">
+                    <h4>Números Sorteados:</h4>
+                    <div class="numeros-lista">
+                        ${resultado.numeros_sorteados
+                            .sort((a, b) => a - b)
+                            .map(n => `<span class="numero-sorteado">${String(n).padStart(2, '0')}</span>`)
+                            .join(' ')}
+                    </div>
+                </div>
+                <div class="seu-jogo">
+                    <h4>Seu Jogo:</h4>
+                    <div class="numeros-lista">
+                        ${resultado.seus_numeros
+                            .sort((a, b) => a - b)
+                            .map(n => `<span class="numero-jogado ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
+                            .join(' ')}
+                    </div>
+                </div>
+                <div class="resultado-info">
+                    <p class="acertos-info">Acertos: <strong>${resultado.acertos}</strong></p>
+                    ${resultado.premio > 0 ? 
+                        `<p class="premio-info">Prêmio: <strong>R$ ${resultado.premio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>` 
+                        : ''}
+                </div>
+            </div>
+        `;
+        detalhesDiv.appendChild(resultadoDiv);
+
+        // Adicionar na tabela
+        const row = document.createElement('tr');
+        const numerosSorteados = resultado.numeros_sorteados
+            .sort((a, b) => a - b)
+            .map(n => `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`)
+            .join('');
+        const seusNumeros = resultado.seus_numeros
+            .sort((a, b) => a - b)
+            .map(n => `<span class="numero-tabela ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
+            .join('');
+        const premioText = resultado.premio > 0 
+            ? `R$ ${resultado.premio.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` 
+            : 'Não houve ganhadores';
+
+        row.innerHTML = `
+            <td>${resultado.concurso}</td>
+            <td>${resultado.data}</td>
+            <td>${resultado.local || '-'}</td>
+            <td><div class="numeros-tabela">${numerosSorteados}</div></td>
+            <td><div class="numeros-tabela">${seusNumeros}</div></td>
+            <td>${resultado.acertos}</td>
+            <td>${premioText}</td>
+            <td>${resultado.premio > 0 ? 'Premiado' : 'Acumulado'}</td>
+        `;
+        tabelaBody.appendChild(row);
+    });
+
+    // Atualiza o total no rodapé
+    const totalCell = document.querySelector('.total-premios');
+    if (totalCell && data.resumo.total_premios) {
+        totalCell.textContent = `R$ ${data.resumo.total_premios.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+    }
+}
+
+// Inicialização do documento
 document.addEventListener('DOMContentLoaded', function() {
     setupDragAndDrop();
     const numeros = document.querySelectorAll('.numero');
@@ -587,6 +962,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const listaJogos = document.getElementById('lista-jogos');
     const overlay = document.getElementById('overlay');
     const numerosSelecionados = new Set();
+
+    // Ocultar botões de exportação inicialmente
+    toggleBotoesExportacao(false);
 
     // Configuração do botão de cancelar conferência
     const btnCancelarConferencia = document.getElementById('btn-cancelar-conferencia');
@@ -603,6 +981,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Inicialização
     atualizarContadorJogos();
+
     // Eventos de seleção de números
     numeros.forEach(numero => {
         numero.addEventListener('click', () => {
@@ -651,7 +1030,7 @@ document.addEventListener('DOMContentLoaded', function() {
         limparBtn.click();
     });
 
-    // Botão Conferir com processamento em lotes
+    // Botão Conferir
     conferirBtn.addEventListener('click', async () => {
         if (jogosIncluidos.length === 0) {
             alert('Inclua pelo menos um jogo antes de conferir!');
@@ -666,19 +1045,15 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        // Oculta os botões de exportação antes de iniciar nova consulta
+        toggleBotoesExportacao// Oculta os botões de exportação antes de iniciar nova consulta
+        toggleBotoesExportacao(false);
+
         overlay.style.display = 'flex';
         conferenciaCancelada = false;
 
         // Calcula os lotes para processamento
         const lotes = calcularLotes(inicio, fim);
-        let resultadosAcumulados = {
-            acertos: [],
-            resumo: {
-                quatro: 0,
-                cinco: 0,
-                seis: 0
-            }
-        };
         try {
             for (const lote of lotes) {
                 if (conferenciaCancelada) break;
@@ -704,6 +1079,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 const data = await response.json();
+                dadosUltimaConsulta = data; // Armazena os dados da última consulta
 
                 if (data.error) {
                     throw new Error(data.error);
@@ -714,7 +1090,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     continue;
                 }
 
-                // Atualizar contagens
+                // Atualizar contagens e valores
                 document.getElementById('quatro-acertos').textContent = data.resumo.quatro;
                 document.getElementById('cinco-acertos').textContent = data.resumo.cinco;
                 document.getElementById('seis-acertos').textContent = data.resumo.seis;
@@ -740,7 +1116,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 }
 
-                // Atualiza os valores nos cartões
+                // Atualizar os valores nos cartões
                 document.getElementById('quatro-valor').textContent = temQuadra && valorQuadra > 0 ? 
                     `R$ ${valorQuadra.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
                     'Não houve ganhadores';
@@ -753,96 +1129,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     `R$ ${valorSena.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
                     'Não houve ganhadores';
 
-                // Atualizar detalhes visuais
-                const detalhesDiv = document.getElementById('detalhes-resultados');
-                detalhesDiv.innerHTML = '';
-
-                const tabelaBody = document.getElementById('tabela-resultados');
-                tabelaBody.innerHTML = ''; // Limpa a tabela
-
+                // Atualizar detalhes e tabela
                 if (data.acertos && data.acertos.length > 0) {
-                    data.acertos.forEach(resultado => {
-                        // Adicionar na seção de detalhes
-                        const resultadoDiv = document.createElement('div');
-                        resultadoDiv.className = 'resultado-item';
-                        resultadoDiv.innerHTML = `
-                            <div class="resultado-header">
-                                <h3>Concurso ${resultado.concurso} - ${resultado.data}</h3>
-                                <p>${resultado.local || ''}</p>
-                            </div>
-                            <div class="resultado-numeros">
-                                <div class="numeros-sorteados">
-                                    <h4>Números Sorteados:</h4>
-                                    <div class="numeros-lista">
-                                        ${resultado.numeros_sorteados
-                                            .sort((a, b) => a - b)
-                                            .map(n => `<span class="numero-sorteado">${String(n).padStart(2, '0')}</span>`)
-                                            .join(' ')}
-                                    </div>
-                                </div>
-                                <div class="seu-jogo">
-                                    <h4>Seu Jogo:</h4>
-                                    <div class="numeros-lista">
-                                        ${resultado.seus_numeros
-                                            .sort((a, b) => a - b)
-                                            .map(n => `<span class="numero-jogado ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
-                                            .join(' ')}
-                                    </div>
-                                </div>
-                                <div class="resultado-info">
-                                    <p class="acertos-info">Acertos: <strong>${resultado.acertos}</strong></p>
-                                    ${resultado.premio > 0 ? 
-                                        `<p class="premio-info">Prêmio: <strong>R$ ${resultado.premio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></p>` 
-                                        : ''}
-                                </div>
-                            </div>
-                        `;
-                        detalhesDiv.appendChild(resultadoDiv);
-
-                        // Adicionar na tabela
-                        const row = document.createElement('tr');
-                        const numerosSorteados = resultado.numeros_sorteados
-                            .sort((a, b) => a - b)
-                            .map(n => `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`)
-                            .join('');
-                        const seusNumeros = resultado.seus_numeros
-                            .sort((a, b) => a - b)
-                            .map(n => `<span class="numero-tabela ${resultado.numeros_sorteados.includes(n) ? 'acerto' : ''}">${String(n).padStart(2, '0')}</span>`)
-                            .join('');
-                        const premioText = resultado.premio > 0 
-                            ? `R$ ${resultado.premio.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` 
-                            : 'Não houve ganhadores';
-
-                        row.innerHTML = `
-                            <td>${resultado.concurso}</td>
-                            <td>${resultado.data}</td>
-                            <td>${resultado.local || '-'}</td>
-                            <td><div class="numeros-tabela">${numerosSorteados}</div></td>
-                            <td><div class="numeros-tabela">${seusNumeros}</div></td>
-                            <td>${resultado.acertos}</td>
-                            <td>${premioText}</td>
-                            <td>${resultado.premio > 0 ? 'Premiado' : 'Acumulado'}</td>
-                        `;
-                        tabelaBody.appendChild(row);
-                        
-                    });
-                    // Atualiza o total no rodapé
-                    const totalCell = document.querySelector('.total-premios');
-                    if (totalCell) {
-                        totalCell.textContent = `R$ ${data.resumo.total_premios.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
-                    }
+                    atualizarDetalhesETabela(data);
+                    // Mostra os botões de exportação após processar com sucesso
+                    toggleBotoesExportacao(true);
                 } else {
-                    detalhesDiv.innerHTML = '<p class="sem-resultados">Nenhum prêmio encontrado para os jogos conferidos.</p>';
+                    toggleBotoesExportacao(false);
                 }
 
-                // Atualização da tabela de jogos sorteados
+                // Atualizar tabela de jogos sorteados
                 if (data.jogos_stats) {
-                    console.log('Dados recebidos para tabela de jogos mais sorteados:', data.jogos_stats);
                     atualizarTabelaJogosSorteados(data.jogos_stats);
                 }
             }
         } catch (error) {
             console.error('Erro detalhado:', error);
+            toggleBotoesExportacao(false);
             if (error.message.includes('<!DOCTYPE')) {
                 alert('O serviço está temporariamente indisponível. Por favor, tente novamente mais tarde ou reduza o intervalo de concursos.');
             } else {
@@ -853,46 +1156,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
-
-function atualizarTabelaJogosSorteados(jogos_stats) {
-    const tbody = document.querySelector('#tabela-jogos-sorteados tbody');
-    tbody.innerHTML = '';
-
-    jogos_stats.forEach(jogo => {
-        const tr = document.createElement('tr');
-        
-        // Coluna do jogo
-        const tdJogo = document.createElement('td');
-        tdJogo.innerHTML = `<div class="numeros-tabela">
-            ${jogo.numeros.map(n => 
-                `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`
-            ).join('')}
-        </div>`;
-        
-        // Coluna do total
-        const tdTotal = document.createElement('td');
-        tdTotal.textContent = `${jogo.total} vezes`;
-        
-        // Coluna da distribuição
-        const tdDistribuicao = document.createElement('td');
-        const distribuicao = [];
-        for (let i = 1; i <= 6; i++) {
-            if (jogo.distribuicao[i] > 0) {
-                distribuicao.push(
-                    `<span class="distribuicao-badge">
-                        ${i} ponto${i !== 1 ? 's' : ''}: ${jogo.distribuicao[i]} vez${jogo.distribuicao[i] !== 1 ? 'es' : ''}
-                    </span>`
-                );
-            }
-        }
-        tdDistribuicao.innerHTML = distribuicao.join(' ');
-        
-        tr.appendChild(tdJogo);
-        tr.appendChild(tdTotal);
-        tr.appendChild(tdDistribuicao);
-        tbody.appendChild(tr);
-    });
-}
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -905,7 +1168,6 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
     <div class="container">
         <h1>Conferidor MegaSena</h1>
 
-    
         <h1>Informação importante!</h1>
         <h2>Para os Jogos:</h2>
         <ul>
@@ -938,7 +1200,7 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
         </ul>
         <p>
             <pre>
-                NA PRATICA...
+                NA PRÁTICA...
                 Se você tem 50.000 jogos:
                     Lote 1 (1-930): 
                     - Processa os 50.000 jogos
@@ -953,8 +1215,6 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
             Os lotes sempre serão divididos em 930, então  <b><u>adicione sempre 1-930...</u></b> e selecione o checkbox <b><u>Somente Premiados</u></b>
         </p>
 
-   
-        
         <div class="volante">
             <h2>Selecione 6 números</h2>
             <div class="numeros">
@@ -964,7 +1224,6 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
             </div>
         </div>
 
-        <!--# Adicione este HTML após a div do volante-->
         <div class="drop-zone" id="drop-zone">
             <div class="drop-zone-content">
                 <p>Arraste e solte seu arquivo aqui ou clique para selecionar</p>
@@ -999,8 +1258,7 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
             <div id="lista-jogos" class="lista-jogos"></div>
         </div>
 
-         <!-- Elementos adicionados conforme CODIGO-2 -->
-         <div class="acoes-jogos">
+        <div class="acoes-jogos">
             <button id="btn-remover-selecionados" class="btn-acao" disabled>
                 Remover Selecionados
             </button>
@@ -1009,7 +1267,6 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
             </button>
         </div>
 
-        <!--Caixa que aparece quando o botão conferir é clicado-->
         <div id="overlay" class="overlay" style="display: none;">
             <div class="progress">
                 <div class="progress-bar"></div>
@@ -1018,9 +1275,17 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
             </div>
         </div>
 
-
         <div class="resultados">
             <h2>Resumo de acertos</h2>
+            <div class="export-buttons hidden">
+                <button onclick="exportarDados('resumo-acertos', 'xlsx')" class="btn-export">
+                    <i class="fas fa-file-excel"></i> Excel
+                </button>
+                <button onclick="exportarDados('resumo-acertos', 'html')" class="btn-export">
+                    <i class="fas fa-file-code"></i> HTML
+                </button>
+            </div>
+
             <div class="cards">
                 <div class="card">
                     <h3>4 Acertos</h3>
@@ -1040,9 +1305,16 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
             </div>
             <div id="detalhes-resultados" class="detalhes-resultados"></div>
 
-            <!--TABELA DE RESUMO DOS RESULTADOS-->
             <div class="tabela-resumo">
                 <h2>Resumo dos Jogos Premiados</h2>
+                <div class="export-buttons hidden">
+                    <button onclick="exportarDados('jogos-premiados', 'xlsx')" class="btn-export">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportarDados('jogos-premiados', 'html')" class="btn-export">
+                        <i class="fas fa-file-code"></i> HTML
+                    </button>
+                </div>
                 <div class="tabela-container">
                     <table class="tabela-premios">
                         <thead>
@@ -1069,9 +1341,17 @@ function atualizarTabelaJogosSorteados(jogos_stats) {
                     </table>
                 </div>
             </div>
-            <!-- Adicionar após a div tabela-resumo para trazer a tabela Jogos Mais Sorteados-->
+
             <div class="jogos-mais-sorteados">
                 <h2>Jogos Mais Sorteados</h2>
+                <div class="export-buttons hidden">
+                    <button onclick="exportarDados('jogos-sorteados', 'xlsx')" class="btn-export">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportarDados('jogos-sorteados', 'html')" class="btn-export">
+                        <i class="fas fa-file-code"></i> HTML
+                    </button>
+                </div>
                 <div class="tabela-container">
                     <table class="tabela-premios" id="tabela-jogos-sorteados">
                         <thead>
@@ -1117,7 +1397,7 @@ body {
     padding: 20px;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    text-align: center;
+    /*text-align: center;*/
 }
 .volante {
     margin: 20px 0;
@@ -1471,6 +1751,38 @@ body {
 
 .detalhes-resultados {
     margin-top: 20px;
+}
+.export-buttons {
+    display: flex;
+    gap: 10px;
+    margin: 10px 0;
+    justify-content: flex-end;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.btn-export {
+    background-color: #008751;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: background-color 0.3s;
+}
+
+.btn-export:hover {
+    background-color: #006b41;
+}
+
+.btn-export i {
+    font-size: 16px;
 }
 
 @keyframes shimmer {

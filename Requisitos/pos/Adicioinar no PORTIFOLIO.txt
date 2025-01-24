@@ -74,3 +74,6 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+LEILOES DO GOVERNO
+https://cav.receita.fazenda.gov.br/ecac/Aplicacao.aspx?id=00006
