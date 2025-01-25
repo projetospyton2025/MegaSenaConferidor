@@ -17,7 +17,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # Uso de logger
-logger = logging.getLogger("NomeDoApp")
+logger = logging.getLogger("Mega Sena Conferidor")
 logger.info("Mensagem de log de teste")
 
 app = Flask(__name__)
