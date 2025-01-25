@@ -1,36 +1,43 @@
-observe este código
-Ele efetua a conferencia do primeiro concurso ao ultimo da megasena correto?
-Afim de não sobrecarregar o sistema ele divide a conferência em
-LOTES
-Lote 1: concursos 1-930
-Lote 2: concursos 931-1860
-Lote 3: concursos 1861-2790
-Lote 4: concursos 2791-2816 (ULTIMO CONCURSO)
+Note que cada concurso será conferido em lote.
+O código me mostra que o que importa é o lote e não a quantidade de jojgos.
+Mas acontece que ao adicionar uma quantidade razoavel de jogos acontece o sequinte
+Localhost == Demora, garrega os jogos mas não processa - trava o pc
+No Servidor Render == Demora, garrega os jogos e sai da página - (não possibilitando de fazer mais nada)
+
+A PERGUNTA É A SEGUINTE.
+EXISTE ALGO PARA IMPLEMENTAR PARA FAZER QUE SEJA MAIS RÁPIDO OU FUNCIONAL INDEPENDENTEMENTE DA QUANTIDADE DE JOGOS A CARREGAR
+
+EXEMPLO
+POSSO GARREGAR
+1 Jogo
+10000 JOGOS
+90000 JOGOS
+120000 JOGOS
+290000 JOGOS
+500000 JOGOS
+1000000 JOGOS
+OU SEJA QUERO QUE NÃO TENHA LIMITES JA PENSEI EM ATE GARREGAR
+50000000 DE JOGOS!!!
 
 
-
-O USUARIO NÃO PRECISA SABER QUE A CONFERÊNCIA ESTA SENDO FEITA EM BLOCOS...
-ENTÃO O SISTEMA DEVE PEGAR O ULTIMO CONCURSO E DIVIDIR EM LOTES DE PELO MENOS 930 PARA EFETUAR A CONFERENCIA 
-MAS O USUARIO NÃO PRECISA FICAR DIGITANDO 1-930, 931-1860 E ASSIM SUCESSIVMENTE
-BASTA O SISTEME VER QUAL É O MONTANDO DE JOGOS.. DIVIDIR EM BACKGROUND OS LOTES E EFETUAR A CONFERENCIA TOTAL
-O USUARIO SOMENTE TERÁ O TRABALHO DE INFORMAR EM QUAL CONCURSO ELE QUER COMEÇAR E FINALIZAR.. 
-
-E NO FINAL O CÓDIGO TRAZER TODA A CONFERENCIA ATUALIZADA, SOMADA, UNIFICADA PARA TODOS OS CONCURSOR CONFERIDO.. 
-
-
-
-# Project Structure:
-MegaSenaConferidor/
-├── requirements.txt
-├── setup.ps1
-├── static/
-│   ├── css/
-│   │   └── style.css
-│   └── js/
-│       └── main.js
-├── templates/
-│   └── index.html
-└── app.py
+Estrutura
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----        19/01/2025     15:16                Requisitos
+d-----        19/01/2025     15:16                static
+d-----        24/01/2025     15:06                templates
+d-----        19/01/2025     17:02                venv
+d-----        22/01/2025     08:23                .vscode
+d-----        24/01/2025     15:41                __pycache__
+------        24/01/2025     14:40           1075 LICENSE
+------        24/01/2025     14:40           3957 MegaSenaConferidor.ps1
+------        24/01/2025     14:40           1650 README.md
+------        25/01/2025     09:03          18567 app.py
+------        25/01/2025     07:52            277 requirements.txt
+------        24/01/2025     14:40           1745 setup.ps1
+------        25/01/2025     09:05              5 .gitignore
+------        25/01/2025     09:12           3120 redis_config.py
+------        25/01/2025     09:04            165 .env
 
 # requirements.txt
 # flask==2.0.3 novo
@@ -42,10 +49,12 @@ aiohttp --only-binary=:all: # Para requisições assíncronas novo
 asyncio==3.4.3 # Para processar múltiplas requisições novo
 redis # novo
 pandas # novo
+python-dotenv
 
 
 
 from flask import Flask, render_template, request, jsonify, send_file
+from redis_config import redis_config
 import requests
 from datetime import datetime
 import os
@@ -56,74 +65,22 @@ import redis
 import json
 import pandas as pd
 import io
+import logging
 
-# Configuração do Redis - LOCALHOST
-# redis_client = redis.Redis(host='localhost', port=6379, db=0)
-# CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas em segundos
+# Configuração básica de logs
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# Obtendo a URL do Redis a partir da variável de ambiente
-redis_url = os.getenv("REDIS_URL")
-
-# URL de conexão ao Redis Cloud
-redis_url = "redis://default:B058xThhTvAbptQa0s25EAGk7A5u473O@redis-13833.c336.samerica-east1-1.gce.redns.redis-cloud.com:13833"
-
-
-# Conectar ao Redis
-r = redis.from_url(redis_url)
-
-
-
-redis_client = redis.Redis(
-    host=os.getenv('REDIS_HOST'),
-    port=int(os.getenv('REDIS_PORT', 6379)),
-    password=os.getenv('REDIS_PASSWORD'),
-    db=int(os.getenv('REDIS_DB', 0))
-)
-
-try:
-    redis_client.ping()
-    print("Conexão bem-sucedida ao Redis!")
-except redis.ConnectionError as e:
-    print(f"Erro ao conectar ao Redis: {e}")
-
-
-redis_host = os.getenv("REDIS_HOST", "localhost")
-redis_port = os.getenv("REDIS_PORT", 6379)
-redis_password = os.getenv("REDIS_PASSWORD", None)
-
-try:
-    redis_client = redis.StrictRedis(
-        host=redis_host,
-        port=redis_port,
-        password=redis_password,
-        decode_responses=True
-    )
-    redis_client.ping()
-    print("Conexão bem-sucedida ao Redis!")
-except Exception as e:
-    print(f"Erro ao conectar ao Redis: {e}")
-
-
-
-
-
-# Funções auxiliares para o cache
-def get_cached_result(concurso):
-    try:
-        cached = redis_client.get(f"megasena:{concurso}")
-        if cached:
-            return json.loads(cached)
-    except:
-        print(f"Erro ao buscar cache para concurso {concurso}")
-    return None
-
-def set_cached_result(concurso, data):
-    try:
-        redis_client.setex(f"megasena:{concurso}", CACHE_EXPIRATION, json.dumps(data))
-    except:
-        print(f"Erro ao armazenar cache para concurso {concurso}")
+# Uso de logger
+logger = logging.getLogger("Mega Sena Conferidor")
+logger.info("Mensagem de log de teste")
 
 app = Flask(__name__)
+
+def get_cached_result(concurso):
+    return redis_config.get_cached_result(concurso)
+
+def set_cached_result(concurso, data):
+    return redis_config.set_cached_result(concurso, data)
 
 def atualizar_estatisticas_jogo(stats, jogo, acertos):
     jogo_key = tuple(sorted(jogo))
@@ -146,7 +103,7 @@ def get_latest_result():
             return response.json()
         return None
     except Exception as e:
-        print(f"Erro ao buscar último resultado: {str(e)}")
+        logger.info(f"Erro ao buscar último resultado: {str(e)}")
         return None
 
 @app.route('/')
@@ -168,8 +125,8 @@ def conferir():
         fim = int(data['fim'])
         jogos = data['jogos']
 
-        print(f"Iniciando conferência de {len(jogos)} jogos")
-        print(f"Período: concurso {inicio} até {fim}")
+        logger.info(f"Iniciando conferência de {len(jogos)} jogos")
+        logger.info(f"Período: concurso {inicio} até {fim}")
 
         resultados = {
             'acertos': [],
@@ -278,7 +235,7 @@ def processar_arquivo():
                     except (ValueError, TypeError):
                         continue
             except Exception as txt_error:
-                print(f"Erro ao processar TXT: {str(txt_error)}")
+                logger.info(f"Erro ao processar TXT: {str(txt_error)}")
                         
         # Se não é txt, tenta processar como Excel
         elif file.filename.endswith(('.xlsx', '.xls')):
@@ -299,7 +256,7 @@ def processar_arquivo():
                     if len(numbers) == 6 and len(set(numbers)) == 6:
                         jogos.append(sorted(numbers))
             except Exception as excel_error:
-                print(f"Erro ao processar Excel: {str(excel_error)}")
+                logger.info(f"Erro ao processar Excel: {str(excel_error)}")
                 
         else:
             return jsonify({
@@ -318,7 +275,7 @@ def processar_arquivo():
             'error': 'Erro ao ler o arquivo. Certifique-se que é um arquivo de texto válido.'
         }), 400
     except Exception as e:
-        print(f"Erro ao processar arquivo: {str(e)}")
+        logger.info(f"Erro ao processar arquivo: {str(e)}")
         return jsonify({
             'error': 'Erro ao processar o arquivo. Verifique o formato e tente novamente.'
         }), 500
@@ -337,7 +294,7 @@ def exportar_dados(tipo, formato):
         else:
             return jsonify({'error': 'Tipo de exportação inválido'}), 400
     except Exception as e:
-        print(f"Erro na exportação: {str(e)}")
+        logger.info(f"Erro na exportação: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 def exportar_resumo_acertos(data, formato):
@@ -604,6 +561,7 @@ if __name__ == '__main__':
 #exportar_resumo_acertos
 #exportar_jogos_premiados
 #exportar_jogos_sorteados
+
 // Variáveis globais
 const jogosIncluidos = [];
 const jogosSelecionados = new Set();
@@ -1224,22 +1182,322 @@ function calcularLotes(inicio, fim) {
     return lotes;
 }
 
+import redis
+import os
+from typing import Optional
+import logging
+import json
+from ast import literal_eval
+from dotenv import load_dotenv
 
+# Carrega as variáveis do arquivo .env
+load_dotenv()
 
+class RedisConfig:
+    def __init__(self):
+        self.logger = self._setup_logger()
+        self.redis_client = self._initialize_redis()
+        self.CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas
+
+    def _setup_logger(self) -> logging.Logger:
+        logger = logging.getLogger('RedisConfig')
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        return logger
+
+    def _initialize_redis(self) -> Optional[redis.Redis]:
+        try:
+            redis_url = os.getenv("REDIS_URL")
+            if redis_url:  # Prioridade para a URL completa, se definida
+                client = redis.from_url(redis_url)
+                client.ping()
+                self.logger.info("Connected to Redis via URL")
+                return client
+            else:
+                # Conexão usando host, port e senha individuais
+                client = redis.Redis(
+                    host=os.getenv('REDIS_HOST'),
+                    port=int(os.getenv('REDIS_PORT')),
+                    password=os.getenv('REDIS_PASSWORD'),
+                    db=int(os.getenv('REDIS_DB', 0)),
+                    decode_responses=True,
+                    socket_timeout=5,
+                    retry_on_timeout=True
+                )
+                client.ping()
+                self.logger.info("Connected to Redis via parameters")
+                return client
+        except Exception as e:
+            self.logger.error(f"A conexão com o Redis falhou: {str(e)}")
+            return None
+
+    def get_cached_result(self, concurso: int) -> Optional[dict]:
+        if not self.redis_client:
+            return None
+
+        try:
+            cached = self.redis_client.get(f"megasena:{concurso}")
+            if not cached:
+                return None
+            try:
+                return json.loads(cached)
+            except:
+                try:
+                    return literal_eval(cached)
+                except:
+                    return None
+        except Exception as e:
+            self.logger.error(f"Cache retrieval error for contest {concurso}: {str(e)}")
+            return None
+
+    def set_cached_result(self, concurso: int, data: dict) -> bool:
+        if not self.redis_client:
+            return False
+
+        try:
+            serialized = json.dumps(data, ensure_ascii=False)
+            self.redis_client.setex(
+                f"megasena:{concurso}",
+                self.CACHE_EXPIRATION,
+                serialized
+            )
+            return True
+        except Exception as e:
+            self.logger.error(f"Cache storage error for contest {concurso}: {str(e)}")
+            return False
+
+redis_config = RedisConfig()
 
 #.gitignore
-venv/
+.env
 
 
-
-
-#.env
+#env
+# Arquivo .env
 REDIS_HOST=redis-13833.c336.samerica-east1-1.gce.redns.redis-cloud.com
 REDIS_PORT=13833
 REDIS_PASSWORD=B058xThhTvAbptQa0s25EAGk7A5u473O
 REDIS_DB=0
 
 
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MegaSena Conferidor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Conferidor MegaSena</h1>
+
+        <h1>Informação importante!</h1>
+        <h2>Para os Jogos:</h2>
+        <ul>
+            <li>Você pode carregar quantos jogos quiser (20 mil, 80 mil, 100 mil...)</li>
+            <li>Não há limite para quantidade de jogos</li>
+            <li>Todos os jogos serão verificados em cada lote</li>
+        </ul>
+        <h2>Para os Concursos:</h2>
+        <ul>
+            <li>O sistema agora processa em lotes de 930 concursos</li>
+            <li>
+                Por exemplo, se você quiser verificar do concurso 1 até o 2816:
+                <ul>
+                    <li>Lote 1: concursos 1-930</li>
+                    <li>Lote 2: concursos 931-1860</li>
+                    <li>Lote 3: concursos 1861-2790</li>
+                    <li>Lote 4: concursos 2791-2816</li>
+                </ul>
+            </li>
+        </ul>
+        <h2>Acumulação de Resultados:</h2>
+        <ul>
+            <li>O sistema mantém um acumulador que vai somando:</li>
+            <ul>
+                <li>Quantidade de acertos (quadra, quina, sena)</li>
+                <li>Valores dos prêmios</li>
+                <li>Todos os jogos premiados</li>
+                <li>Estatísticas gerais</li>
+            </ul>
+        </ul>
+        <p>
+            <pre>
+                NA PRÁTICA...
+                Se você tem 50.000 jogos:
+                    Lote 1 (1-930): 
+                    - Processa os 50.000 jogos
+                    - Guarda resultados
+                    ↓
+                    Lote 2 (931-1860):
+                    - Processa os mesmos 50.000 jogos
+                    - Soma com resultados anteriores
+                    ↓
+                    E assim por diante...
+            </pre>
+            Os lotes sempre serão divididos de 930 à 930, então no <b><u>Concurso Inicial</u></b> adicione o concurso que quiser, selecione o checkbox <b><u>Somente Premiados</u></b>, e aguarde a conferencia.
+
+        </p>
+
+        <div class="volante">
+            <h2>Selecione 6 números</h2>
+            <div class="numeros">
+                {% for i in range(1, 61) %}
+                    <button type="button" class="numero" data-numero="{{ i }}">{{ '%02d' % i }}</button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="drop-zone" id="drop-zone">
+            <div class="drop-zone-content">
+                <p>Arraste e solte seu arquivo aqui ou clique para selecionar</p>
+                <p class="drop-zone-hint">Arquivos .txt ou .xlsx</p>
+                <input type="file" id="file-input" accept=".txt,.xlsx" hidden>
+            </div>
+        </div>
+
+        <div class="controles">
+            <div class="input-group">
+                <label for="inicio">Concurso Inicial:</label>
+                <input type="number" id="inicio" min="1">
+            </div>
+            <div class="input-group">
+                <label for="fim">Concurso Final:</label>
+                <input type="number" id="fim" min="1" value="{{ ultimo_concurso }}">
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="somente-premiados">
+                <label for="somente-premiados">Somente premiados</label>
+            </div>
+        </div>
+
+        <div class="acoes">
+            <button id="incluir" class="btn btn-azul">Incluir Jogo</button>
+            <button id="limpar" class="btn btn-vermelho">Limpar</button>
+            <button id="sugestao" class="btn btn-roxo">Palpite</button>
+            <button id="conferir" class="btn btn-verde">Conferir</button>
+        </div>
+        <div class="jogos-incluidos">
+            <h3>Jogos Incluídos (<span id="contador-jogos">0</span> jogos)</h3>
+            <div id="lista-jogos" class="lista-jogos"></div>
+        </div>
+
+        <div class="acoes-jogos">
+            <button id="btn-remover-selecionados" class="btn-acao" disabled>
+                Remover Selecionados
+            </button>
+            <button id="btn-limpar-todos" class="btn-acao">
+                Limpar Todos
+            </button>
+        </div>
+
+        <div id="overlay" class="overlay" style="display: none;">
+            <div class="progress">
+                <div class="progress-bar"></div>
+                <div class="progress-text">Conferindo jogos...</div>
+                <button id="btn-cancelar-conferencia" class="btn-cancelar">Cancelar Conferência</button>
+            </div>
+        </div>
+
+        <div class="resultados">
+            <h2>Resumo de acertos</h2>
+            <div class="export-buttons hidden">
+                <button onclick="exportarDados('resumo-acertos', 'xlsx')" class="btn-export">
+                    <i class="fas fa-file-excel"></i> Excel
+                </button>
+                <button onclick="exportarDados('resumo-acertos', 'html')" class="btn-export">
+                    <i class="fas fa-file-code"></i> HTML
+                </button>
+            </div>
+
+            <div class="cards">
+                <div class="card">
+                    <h3>4 Acertos</h3>
+                    <p class="contagem" id="quatro-acertos">0</p>
+                    <p class="valor-premio" id="quatro-valor">R$ 0,00</p>
+                </div>
+                <div class="card">
+                    <h3>5 Acertos</h3>
+                    <p class="contagem" id="cinco-acertos">0</p>
+                    <p class="valor-premio" id="cinco-valor">R$ 0,00</p>
+                </div>
+                <div class="card">
+                    <h3>6 Acertos</h3>
+                    <p class="contagem" id="seis-acertos">0</p>
+                    <p class="valor-premio" id="seis-valor">R$ 0,00</p>
+                </div>
+            </div>
+            <div id="detalhes-resultados" class="detalhes-resultados"></div>
+
+            <div class="tabela-resumo">
+                <h2>Resumo dos Jogos Premiados</h2>
+                <div class="export-buttons hidden">
+                    <button onclick="exportarDados('jogos-premiados', 'xlsx')" class="btn-export">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportarDados('jogos-premiados', 'html')" class="btn-export">
+                        <i class="fas fa-file-code"></i> HTML
+                    </button>
+                </div>
+                <div class="tabela-container">
+                    <table class="tabela-premios">
+                        <thead>
+                            <tr>
+                                <th>Concurso</th>
+                                <th>Data</th>
+                                <th>Local</th>
+                                <th>Números Sorteados</th>
+                                <th>Seu Jogo</th>
+                                <th>Acertos</th>
+                                <th>Prêmio</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabela-resultados">
+                            <!-- Será preenchido via JavaScript -->
+                        </tbody>
+                        <tfoot id="tabela-totais">
+                            <tr>
+                                <td colspan="6"><strong>Total de Prêmios</strong></td>
+                                <td colspan="2" class="total-premios"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <div class="jogos-mais-sorteados">
+                <h2>Jogos Mais Sorteados</h2>
+                <div class="export-buttons hidden">
+                    <button onclick="exportarDados('jogos-sorteados', 'xlsx')" class="btn-export">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportarDados('jogos-sorteados', 'html')" class="btn-export">
+                        <i class="fas fa-file-code"></i> HTML
+                    </button>
+                </div>
+                <div class="tabela-container">
+                    <table class="tabela-premios" id="tabela-jogos-sorteados">
+                        <thead>
+                            <tr>
+                                <th>Meu Jogo</th>
+                                <th>Total de Acertos</th>
+                                <th>Distribuição</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
 
 
  :root {
@@ -2168,221 +2426,5 @@ body {
         margin: 10px 0;
     }
 }
-
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MegaSena Conferidor</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <h1>Conferidor MegaSena</h1>
-
-        <h1>Informação importante!</h1>
-        <h2>Para os Jogos:</h2>
-        <ul>
-            <li>Você pode carregar quantos jogos quiser (20 mil, 80 mil, 100 mil...)</li>
-            <li>Não há limite para quantidade de jogos</li>
-            <li>Todos os jogos serão verificados em cada lote</li>
-        </ul>
-        <h2>Para os Concursos:</h2>
-        <ul>
-            <li>O sistema agora processa em lotes de 930 concursos</li>
-            <li>
-                Por exemplo, se você quiser verificar do concurso 1 até o 2816:
-                <ul>
-                    <li>Lote 1: concursos 1-930</li>
-                    <li>Lote 2: concursos 931-1860</li>
-                    <li>Lote 3: concursos 1861-2790</li>
-                    <li>Lote 4: concursos 2791-2816</li>
-                </ul>
-            </li>
-        </ul>
-        <h2>Acumulação de Resultados:</h2>
-        <ul>
-            <li>O sistema mantém um acumulador que vai somando:</li>
-            <ul>
-                <li>Quantidade de acertos (quadra, quina, sena)</li>
-                <li>Valores dos prêmios</li>
-                <li>Todos os jogos premiados</li>
-                <li>Estatísticas gerais</li>
-            </ul>
-        </ul>
-        <p>
-            <pre>
-                NA PRÁTICA...
-                Se você tem 50.000 jogos:
-                    Lote 1 (1-930): 
-                    - Processa os 50.000 jogos
-                    - Guarda resultados
-                    ↓
-                    Lote 2 (931-1860):
-                    - Processa os mesmos 50.000 jogos
-                    - Soma com resultados anteriores
-                    ↓
-                    E assim por diante...
-            </pre>
-            Os lotes sempre serão divididos de 930 à 930, então no <b><u>Concurso Inicial</u></b> adicione o concurso que quiser, selecione o checkbox <b><u>Somente Premiados</u></b>, e aguarde a conferencia.
-
-        </p>
-
-        <div class="volante">
-            <h2>Selecione 6 números</h2>
-            <div class="numeros">
-                {% for i in range(1, 61) %}
-                    <button type="button" class="numero" data-numero="{{ i }}">{{ '%02d' % i }}</button>
-                {% endfor %}
-            </div>
-        </div>
-
-        <div class="drop-zone" id="drop-zone">
-            <div class="drop-zone-content">
-                <p>Arraste e solte seu arquivo aqui ou clique para selecionar</p>
-                <p class="drop-zone-hint">Arquivos .txt ou .xlsx</p>
-                <input type="file" id="file-input" accept=".txt,.xlsx" hidden>
-            </div>
-        </div>
-
-        <div class="controles">
-            <div class="input-group">
-                <label for="inicio">Concurso Inicial:</label>
-                <input type="number" id="inicio" min="1">
-            </div>
-            <div class="input-group">
-                <label for="fim">Concurso Final:</label>
-                <input type="number" id="fim" min="1" value="{{ ultimo_concurso }}">
-            </div>
-            <div class="checkbox-group">
-                <input type="checkbox" id="somente-premiados">
-                <label for="somente-premiados">Somente premiados</label>
-            </div>
-        </div>
-
-        <div class="acoes">
-            <button id="incluir" class="btn btn-azul">Incluir Jogo</button>
-            <button id="limpar" class="btn btn-vermelho">Limpar</button>
-            <button id="sugestao" class="btn btn-roxo">Palpite</button>
-            <button id="conferir" class="btn btn-verde">Conferir</button>
-        </div>
-        <div class="jogos-incluidos">
-            <h3>Jogos Incluídos (<span id="contador-jogos">0</span> jogos)</h3>
-            <div id="lista-jogos" class="lista-jogos"></div>
-        </div>
-
-        <div class="acoes-jogos">
-            <button id="btn-remover-selecionados" class="btn-acao" disabled>
-                Remover Selecionados
-            </button>
-            <button id="btn-limpar-todos" class="btn-acao">
-                Limpar Todos
-            </button>
-        </div>
-
-        <div id="overlay" class="overlay" style="display: none;">
-            <div class="progress">
-                <div class="progress-bar"></div>
-                <div class="progress-text">Conferindo jogos...</div>
-                <button id="btn-cancelar-conferencia" class="btn-cancelar">Cancelar Conferência</button>
-            </div>
-        </div>
-
-        <div class="resultados">
-            <h2>Resumo de acertos</h2>
-            <div class="export-buttons hidden">
-                <button onclick="exportarDados('resumo-acertos', 'xlsx')" class="btn-export">
-                    <i class="fas fa-file-excel"></i> Excel
-                </button>
-                <button onclick="exportarDados('resumo-acertos', 'html')" class="btn-export">
-                    <i class="fas fa-file-code"></i> HTML
-                </button>
-            </div>
-
-            <div class="cards">
-                <div class="card">
-                    <h3>4 Acertos</h3>
-                    <p class="contagem" id="quatro-acertos">0</p>
-                    <p class="valor-premio" id="quatro-valor">R$ 0,00</p>
-                </div>
-                <div class="card">
-                    <h3>5 Acertos</h3>
-                    <p class="contagem" id="cinco-acertos">0</p>
-                    <p class="valor-premio" id="cinco-valor">R$ 0,00</p>
-                </div>
-                <div class="card">
-                    <h3>6 Acertos</h3>
-                    <p class="contagem" id="seis-acertos">0</p>
-                    <p class="valor-premio" id="seis-valor">R$ 0,00</p>
-                </div>
-            </div>
-            <div id="detalhes-resultados" class="detalhes-resultados"></div>
-
-            <div class="tabela-resumo">
-                <h2>Resumo dos Jogos Premiados</h2>
-                <div class="export-buttons hidden">
-                    <button onclick="exportarDados('jogos-premiados', 'xlsx')" class="btn-export">
-                        <i class="fas fa-file-excel"></i> Excel
-                    </button>
-                    <button onclick="exportarDados('jogos-premiados', 'html')" class="btn-export">
-                        <i class="fas fa-file-code"></i> HTML
-                    </button>
-                </div>
-                <div class="tabela-container">
-                    <table class="tabela-premios">
-                        <thead>
-                            <tr>
-                                <th>Concurso</th>
-                                <th>Data</th>
-                                <th>Local</th>
-                                <th>Números Sorteados</th>
-                                <th>Seu Jogo</th>
-                                <th>Acertos</th>
-                                <th>Prêmio</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabela-resultados">
-                            <!-- Será preenchido via JavaScript -->
-                        </tbody>
-                        <tfoot id="tabela-totais">
-                            <tr>
-                                <td colspan="6"><strong>Total de Prêmios</strong></td>
-                                <td colspan="2" class="total-premios"></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-
-            <div class="jogos-mais-sorteados">
-                <h2>Jogos Mais Sorteados</h2>
-                <div class="export-buttons hidden">
-                    <button onclick="exportarDados('jogos-sorteados', 'xlsx')" class="btn-export">
-                        <i class="fas fa-file-excel"></i> Excel
-                    </button>
-                    <button onclick="exportarDados('jogos-sorteados', 'html')" class="btn-export">
-                        <i class="fas fa-file-code"></i> HTML
-                    </button>
-                </div>
-                <div class="tabela-container">
-                    <table class="tabela-premios" id="tabela-jogos-sorteados">
-                        <thead>
-                            <tr>
-                                <th>Meu Jogo</th>
-                                <th>Total de Acertos</th>
-                                <th>Distribuição</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-</body>
-</html>
 
 
