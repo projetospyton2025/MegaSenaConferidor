@@ -79,30 +79,6 @@ LEILOES DO GOVERNO
 https://cav.receita.fazenda.gov.br/ecac/Aplicacao.aspx?id=00006
 
 
-Confirmar se o venv está sendo ignorado
-Após adicionar ou verificar o .gitignore, confirme se o diretório venv está sendo ignorado pelo Git:
-
----------Execute o seguinte comando no terminal:
----------git status
----------Verifique se o venv/ aparece na lista de arquivos "untracked" ou "modified". Se não aparecer, o Git já está ignorando o diretório.
-
-Caso o venv ainda apareça
-Se mesmo assim o venv aparecer no git status, pode haver um problema de cache no Git. Para corrigir isso:
-
-Limpe o cache do Git:
-git rm -r --cached .
-
-Adicione tudo novamente:
-git add .
-Confirme as alterações:
-
-
-
-
-git commit -m "Atualiza .gitignore para ignorar venv"
-Envie para o repositório remoto:
-
-git push
 
 -----SOBRE O ENV / GITIGNORE
 
@@ -110,6 +86,8 @@ git push
 pip install python-dotenv
 pip show python-dotenv
 
+"""
+NO APP.PY ADICINE
 
 from dotenv import load_dotenv
 import os
@@ -120,8 +98,32 @@ load_dotenv()
 # Acessa as variáveis de ambiente
 api_key = os.getenv("API_KEY")
 print(f"Sua chave de API é: {api_key}")
+"""
 
-
+"""
+NO .ENV ADICINE
 API_KEY=sua_chave_aqui
 DB_URL=sua_url_do_banco_aqui
 
+
+
+Confirmar se o venv está sendo ignorado (o .venv não pode aparecer)
+git status
+
+
+
+Limpe o cache do Git:
+git rm --cached .env
+git rm --cached .
+
+Tenha certeza
+git commit -m "Removendo o .env do controle de versao"
+
+
+
+
+------SOBRE O print
+print()
+logger.info()
+logger.warning()
+logger.error()
