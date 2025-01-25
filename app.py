@@ -1,8 +1,6 @@
 from flask import Flask, render_template, request, jsonify, send_file
 from redis_config import redis_config
 from datetime import datetime
-from waitress import serve
-#from app import app
 import requests
 import os
 import random
@@ -499,16 +497,18 @@ def exportar_jogos_sorteados(data, formato):
 
 
 
+"""
+#PARA O LOCALHOST
+# timeout do servidor para evitar desconexões:
 if __name__ == '__main__':
-    # Utilizando waitress para servir a aplicação com o timeout configurado
-    serve(app, host='0.0.0.0', port=5000, threads=4, timeout=300)
+    app.run(debug=True, host='0.0.0.0', port=5000)
 
+"""
 
-
+#PARA O SERVIDOR
 # timeout do servidor para evitar desconexões:
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5000)
-
 
 
 """

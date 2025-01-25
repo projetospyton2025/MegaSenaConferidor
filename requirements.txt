@@ -10,7 +10,6 @@ redis # novo
 pandas # novo
 python-dotenv # novo
 asyncio # novo
-waitress # novo
 
 
 
