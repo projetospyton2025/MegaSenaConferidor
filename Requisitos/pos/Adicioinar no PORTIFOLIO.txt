@@ -103,3 +103,25 @@ git commit -m "Atualiza .gitignore para ignorar venv"
 Envie para o repositório remoto:
 
 git push
+
+-----SOBRE O ENV / GITIGNORE
+
+.env
+pip install python-dotenv
+pip show python-dotenv
+
+
+from dotenv import load_dotenv
+import os
+
+# Carrega as variáveis do arquivo .env
+load_dotenv()
+
+# Acessa as variáveis de ambiente
+api_key = os.getenv("API_KEY")
+print(f"Sua chave de API é: {api_key}")
+
+
+API_KEY=sua_chave_aqui
+DB_URL=sua_url_do_banco_aqui
+
