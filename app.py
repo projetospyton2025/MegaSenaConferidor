@@ -49,7 +49,7 @@ def get_latest_result():
             return response.json()
         return None
     except Exception as e:
-        print(f"Erro ao buscar último resultado: {str(e)}")
+        logger.info(f"Erro ao buscar último resultado: {str(e)}")
         return None
 
 @app.route('/')
@@ -71,8 +71,8 @@ def conferir():
         fim = int(data['fim'])
         jogos = data['jogos']
 
-        print(f"Iniciando conferência de {len(jogos)} jogos")
-        print(f"Período: concurso {inicio} até {fim}")
+        logger.info(f"Iniciando conferência de {len(jogos)} jogos")
+        logger.info(f"Período: concurso {inicio} até {fim}")
 
         resultados = {
             'acertos': [],
@@ -181,7 +181,7 @@ def processar_arquivo():
                     except (ValueError, TypeError):
                         continue
             except Exception as txt_error:
-                print(f"Erro ao processar TXT: {str(txt_error)}")
+                logger.info(f"Erro ao processar TXT: {str(txt_error)}")
                         
         # Se não é txt, tenta processar como Excel
         elif file.filename.endswith(('.xlsx', '.xls')):
@@ -202,7 +202,7 @@ def processar_arquivo():
                     if len(numbers) == 6 and len(set(numbers)) == 6:
                         jogos.append(sorted(numbers))
             except Exception as excel_error:
-                print(f"Erro ao processar Excel: {str(excel_error)}")
+                logger.info(f"Erro ao processar Excel: {str(excel_error)}")
                 
         else:
             return jsonify({
@@ -221,7 +221,7 @@ def processar_arquivo():
             'error': 'Erro ao ler o arquivo. Certifique-se que é um arquivo de texto válido.'
         }), 400
     except Exception as e:
-        print(f"Erro ao processar arquivo: {str(e)}")
+        logger.info(f"Erro ao processar arquivo: {str(e)}")
         return jsonify({
             'error': 'Erro ao processar o arquivo. Verifique o formato e tente novamente.'
         }), 500
@@ -240,7 +240,7 @@ def exportar_dados(tipo, formato):
         else:
             return jsonify({'error': 'Tipo de exportação inválido'}), 400
     except Exception as e:
-        print(f"Erro na exportação: {str(e)}")
+        logger.info(f"Erro na exportação: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 def exportar_resumo_acertos(data, formato):
