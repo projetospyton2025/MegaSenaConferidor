@@ -8,8 +8,11 @@ aiohttp --only-binary=:all: # Para requisições assíncronas novo
 asyncio==3.4.3 # Para processar múltiplas requisições novo
 redis # novo
 pandas # novo
-python-dotenv
-asyncio
+python-dotenv # novo
+asyncio # novo
+waitress # novo
+
+
 
 #aiohttp 
 #asyncio

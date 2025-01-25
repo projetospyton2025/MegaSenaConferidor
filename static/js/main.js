@@ -592,4 +592,4 @@ function calcularLotes(inicio, fim) {
         lotes.push({inicio: i, fim: loteFim});
     }
     return lotes;
-}
+};

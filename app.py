@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, jsonify, send_file
 from redis_config import redis_config
-import requests
 from datetime import datetime
+from waitress import serve
+#from app import app
+import requests
 import os
 import random
 import aiohttp
@@ -11,6 +13,7 @@ import json
 import pandas as pd
 import io
 import logging
+
 
 # Configuração básica de logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -495,20 +498,28 @@ def exportar_jogos_sorteados(data, formato):
         raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
 
 
+
+if __name__ == '__main__':
+    # Utilizando waitress para servir a aplicação com o timeout configurado
+    serve(app, host='0.0.0.0', port=5000, threads=4, timeout=300)
+
+
+
 # timeout do servidor para evitar desconexões:
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000, timeout=300)
+    app.run(debug=False, host='0.0.0.0', port=5000)
 
 
 
 """
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5000)
-"""
 
-""" LOCALHOST
+
+# LOCALHOST
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 # Agora a parte de configuração da porta
