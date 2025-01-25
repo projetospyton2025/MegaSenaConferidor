@@ -119,6 +119,11 @@ git rm --cached .
 Tenha certeza
 git commit -m "Removendo o .env do controle de versao"
 
+RESUMO DO ENV
+Adicione o arquivo .env no projeto
+Instale a biblioteca python-dotenv
+Atualize o código para usar o .env (*.py)
+Adicione o .env ao .gitignore
 
 
 

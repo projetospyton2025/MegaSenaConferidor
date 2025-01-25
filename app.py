@@ -507,3 +507,5 @@ if __name__ == '__main__':
 #exportar_resumo_acertos
 #exportar_jogos_premiados
 #exportar_jogos_sorteados
+
+
