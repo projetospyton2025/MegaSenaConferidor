@@ -628,7 +628,7 @@ async function atualizarInterfaceProgressiva(resultados) {
 };
 
 
-`Processando concursos ${lote.inicio} a ${lote.fim} (${progresso}% dos jogos)...`;
+
 
 //ALTERADO 24/01/2025
 // Função para calcular lotes
@@ -652,3 +652,100 @@ if (isProduction) {
   console.log('Running in development mode');
 }
 
+// const analisarDistribuicaoPontos = async () => {
+//     const API_BASE_URL = "https://loteriascaixa-api.herokuapp.com/api";
+//     let jogosStats = new Map();
+    
+//     try {
+//         const response = await fetch(`${API_BASE_URL}/megasena/latest`);
+//         const ultimo = await response.json();
+        
+//         for(let i = 1; i <= ultimo.concurso; i++) {
+//             const res = await fetch(`${API_BASE_URL}/megasena/${i}`);
+//             const data = await res.json();
+//             const dezenas = data.dezenas.map(n => parseInt(n));
+            
+//             dezenas.forEach((d1, i) => {
+//                 for(let j = i+1; j < dezenas.length; j++) {
+//                     const jogo = [d1, dezenas[j]].sort((a,b) => a-b);
+//                     const key = jogo.join(',');
+                    
+//                     if(!jogosStats.has(key)) {
+//                         jogosStats.set(key, {
+//                             numeros: jogo,
+//                             total: 0,
+//                             distribuicao: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
+//                         });
+//                     }
+                    
+//                     const acertos = jogo.filter(n => dezenas.includes(n)).length;
+//                     const stats = jogosStats.get(key);
+//                     stats.total++;
+//                     stats.distribuicao[acertos]++;
+//                 }
+//             });
+//         }
+        
+//         // Ordenar e mostrar resultados
+//         const jogosOrdenados = [...jogosStats.entries()]
+//             .sort((a, b) => b[1].total - a[1].total)
+//             .slice(0, 20);
+            
+//         const tabelaHTML = jogosOrdenados.map(([key, stats]) => `
+//             <tr>
+//                 <td>${stats.numeros.join(' ')}</td>
+//                 <td>${stats.total}</td>
+//                 <td>${Object.entries(stats.distribuicao)
+//                     .filter(([_, val]) => val > 0)
+//                     .map(([pontos, vezes]) => `${pontos} pontos: ${vezes}x`)
+//                     .join(', ')}
+//                 </td>
+//             </tr>
+//         `).join('');
+        
+//         document.getElementById('jogosFrequentes').innerHTML = `
+//             <table class="duques-table">
+//                 <thead>
+//                     <tr>
+//                         <th>Meu Jogo</th>
+//                         <th>Total de Acertos</th>
+//                         <th>Distribuição</th>
+//                     </tr>
+//                 </thead>
+//                 <tbody>
+//                     ${tabelaHTML}
+//                 </tbody>
+//             </table>
+//         `;
+//     } catch (error) {
+//         console.error('Erro:', error);
+//     }
+// };
+
+
+function encontrarPadroes(dezenas) {
+    // Encontrar padrões de acertos para cada jogo
+    for (let i = 0; i < dezenas.length; i++) {
+        const jogo = [...dezenas];
+        for (let pontos = 1; pontos <= 6; pontos++) {
+            const distribuicao = {};
+            let totalAcertos = 0;
+            
+            // Contagem de acertos por jogo
+            const acertos = jogo.filter(n => dezenas.includes(n)).length;
+            if (acertos === pontos) {
+                distribuicao[pontos] = (distribuicao[pontos] || 0) + 1;
+                totalAcertos++;
+            }
+            
+            if (totalAcertos > 0) {
+                const key = jogo.join(',');
+                jogoStats.set(key, {
+                    numeros: jogo,
+                    total: totalAcertos,
+                    distribuicao: distribuicao
+                });
+            }
+        }
+    }
+}
