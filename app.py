@@ -1,8 +1,7 @@
-
 from flask import Flask, render_template, request, jsonify, send_file
 from redis_config import redis_config
-import requests
 from datetime import datetime
+import requests
 import os
 import random
 import aiohttp
@@ -12,6 +11,7 @@ import json
 import pandas as pd
 import io
 import logging
+
 
 # Configuração básica de logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -42,96 +42,104 @@ def atualizar_estatisticas_jogo(stats, jogo, acertos):
 
 API_BASE_URL = "https://loteriascaixa-api.herokuapp.com/api"
 
-def get_latest_result():
+async def get_latest_result():
     try:
-        response = requests.get(f"{API_BASE_URL}/megasena/latest")
-        if response.status_code == 200:
-            return response.json()
-        return None
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{API_BASE_URL}/megasena/latest") as response:
+                if response.status == 200:
+                    return await response.json()
+                return None
     except Exception as e:
         logger.info(f"Erro ao buscar último resultado: {str(e)}")
         return None
 
 @app.route('/')
-def index():
-    latest = get_latest_result()
+async def index():
+    latest = await get_latest_result()
     ultimo_concurso = latest['concurso'] if latest else 2680
     return render_template('index.html', ultimo_concurso=ultimo_concurso)
 
 @app.route('/gerar_numeros')
-def gerar_numeros():
+async def gerar_numeros():
     numeros = random.sample(range(1, 61), 6)
     return jsonify({'numeros': sorted(numeros)})
 
-@app.route('/conferir', methods=['POST'])
-def conferir():
+async def fetch_concurso_result(concurso):
     try:
-        data = request.get_json()
+        response = await aiohttp.ClientSession().get(f"{API_BASE_URL}/megasena/{concurso}")
+        if response.status == 200:
+            return await response.json()
+    except Exception as e:
+        logger.info(f"Erro ao buscar resultado do concurso {concurso}: {str(e)}")
+    return None
+
+async def processar_chunk_jogos(session, chunk_jogos, concurso_results, resultados, jogos_stats):
+    for resultado in concurso_results:
+        if not resultado:
+            continue
+            
+        dezenas = [int(d) for d in resultado['dezenas']]
+        
+        for jogo in chunk_jogos:
+            acertos = len(set(jogo) & set(dezenas))
+            if acertos > 0:
+                jogos_stats = atualizar_estatisticas_jogo(jogos_stats, jogo, acertos)
+                
+            if acertos >= 4:
+                premio = 0
+                for premiacao in resultado['premiacoes']:
+                    if ((acertos == 6 and premiacao['descricao'] == '6 acertos') or
+                        (acertos == 5 and premiacao['descricao'] == '5 acertos') or
+                        (acertos == 4 and premiacao['descricao'] == '4 acertos')):
+                        premio = premiacao['valorPremio']
+                        resultados['resumo']['total_premios'] += premio
+                        break
+
+                if acertos == 4: resultados['resumo']['quatro'] += 1
+                elif acertos == 5: resultados['resumo']['cinco'] += 1
+                elif acertos == 6: resultados['resumo']['seis'] += 1
+
+                resultados['acertos'].append({
+                    'concurso': resultado['concurso'],
+                    'data': resultado['data'], 
+                    'local': resultado.get('local', ''),
+                    'numeros_sorteados': dezenas,
+                    'seus_numeros': jogo,
+                    'acertos': acertos,
+                    'premio': premio
+                })
+
+@app.route('/conferir', methods=['POST'])
+async def conferir():
+    try:
+        data = await request.get_json()
         inicio = int(data['inicio'])
         fim = int(data['fim'])
         jogos = data['jogos']
 
-        logger.info(f"Iniciando conferência de {len(jogos)} jogos")
-        logger.info(f"Período: concurso {inicio} até {fim}")
-
+        CHUNK_SIZE = 5000  # Processamento em chunks menores
         resultados = {
             'acertos': [],
-            'resumo': {
-                'quatro': 0,
-                'cinco': 0,
-                'seis': 0,
-                'total_premios': 0
-            }
+            'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0}
         }
-
         jogos_stats = {}
 
-        for concurso in range(inicio, fim + 1):
-            try:
-                resultado = get_cached_result(concurso)
-                if not resultado:
-                    response = requests.get(f"{API_BASE_URL}/megasena/{concurso}", timeout=5)
-                    if response.status_code != 200:
-                        continue
-                    resultado = response.json()
-                    set_cached_result(concurso, resultado)
+        # Busca resultados dos concursos uma única vez
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for concurso in range(inicio, fim + 1):
+                cached = get_cached_result(concurso)
+                if cached:
+                    tasks.append(cached)
+                else:
+                    tasks.append(fetch_concurso_result(concurso))
+            
+            concursos_results = await asyncio.gather(*tasks)
 
-                dezenas = [int(d) for d in resultado['dezenas']]
-
-                for jogo in jogos:
-                    acertos = len(set(jogo) & set(dezenas))
-                    if acertos > 0:
-                        jogos_stats = atualizar_estatisticas_jogo(jogos_stats, jogo, acertos)
-
-                    if acertos >= 4:
-                        premio = 0
-                        for premiacao in resultado['premiacoes']:
-                            if ((acertos == 6 and premiacao['descricao'] == '6 acertos') or
-                                (acertos == 5 and premiacao['descricao'] == '5 acertos') or
-                                (acertos == 4 and premiacao['descricao'] == '4 acertos')):
-                                premio = premiacao['valorPremio']
-                                resultados['resumo']['total_premios'] += premio
-                                break
-
-                        if acertos == 4:
-                            resultados['resumo']['quatro'] += 1
-                        elif acertos == 5:
-                            resultados['resumo']['cinco'] += 1
-                        elif acertos == 6:
-                            resultados['resumo']['seis'] += 1
-
-                        resultados['acertos'].append({
-                            'concurso': resultado['concurso'],
-                            'data': resultado['data'],
-                            'local': resultado.get('local', ''),
-                            'numeros_sorteados': dezenas,
-                            'seus_numeros': jogo,
-                            'acertos': acertos,
-                            'premio': premio
-                        })
-
-            except Exception as e:
-                continue
+        # Processa jogos em chunks
+        for i in range(0, len(jogos), CHUNK_SIZE):
+            chunk = jogos[i:i + CHUNK_SIZE]
+            await processar_chunk_jogos(session, chunk, concursos_results, resultados, jogos_stats)
 
         resultados['resumo']['total_premios'] = round(resultados['resumo']['total_premios'], 2)
         jogos_stats_ordenados = sorted(
@@ -150,6 +158,7 @@ def conferir():
         })
 
     except Exception as e:
+        logger.error(f"Erro na conferência: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/processar_arquivo', methods=['POST'])
@@ -487,13 +496,30 @@ def exportar_jogos_sorteados(data, formato):
         raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
 
 
+
+"""
+#PARA O LOCALHOST
+# timeout do servidor para evitar desconexões:
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
+
+"""
+
+#PARA O SERVIDOR
+# timeout do servidor para evitar desconexões:
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5000)
 
 
-""" LOCALHOST
+"""
+if __name__ == '__main__':
+    app.run(debug=False, host='0.0.0.0', port=5000)
+
+
+# LOCALHOST
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 # Agora a parte de configuração da porta
