@@ -1,0 +1,37 @@
+neste resultado você não tem 4 lotes, e sim 4 rodadas de conferência, com cada rodada processando apenas 1 lote. Isso fica evidente porque, em cada trecho do log, o programa informa:
+"Total de lotes a processar: 1" e "Processando lote 1/1".
+
+Portanto, cada conferência analisou um único lote de concursos, mas em diferentes intervalos:
+
+Concursos 1 até 930
+Concursos 931 até 1860
+Concursos 1861 até 2790
+Concursos 2791 até 2820 ( a informação aqui será sempre aumentada de semana a semana, mas a conferência pode e deve permanecer sempre 630 ok)
+
+2025-01-26 13:21:44,877 - Mega Sena Conferidor - INFO - Iniciando conferência - Total de jogos: 6
+2025-01-26 13:21:44,878 - Mega Sena Conferidor - INFO - Total de lotes a processar: 1
+2025-01-26 13:21:44,878 - Mega Sena Conferidor - INFO - Processando concursos 1 até 930
+2025-01-26 13:21:44,878 - Mega Sena Conferidor - INFO - Processando lote 1/1 - Concursos 1 até 930
+2025-01-26 13:21:45,414 - Mega Sena Conferidor - INFO - Lote 1 concluído
+2025-01-26 13:21:45,415 - Mega Sena Conferidor - INFO - Conferência finalizada
+2025-01-26 13:21:45,418 - werkzeug - INFO - 192.168.11.108 - - [26/Jan/2025 13:21:45] "POST /conferir HTTP/1.1" 200 -
+2025-01-26 13:21:45,531 - Mega Sena Conferidor - INFO - Iniciando conferência - Total de jogos: 6
+2025-01-26 13:21:45,535 - Mega Sena Conferidor - INFO - Total de lotes a processar: 1
+2025-01-26 13:21:45,538 - Mega Sena Conferidor - INFO - Processando concursos 931 até 1860
+2025-01-26 13:21:45,540 - Mega Sena Conferidor - INFO - Processando lote 1/1 - Concursos 931 até 1860
+2025-01-26 13:21:46,139 - Mega Sena Conferidor - INFO - Lote 1 concluído
+2025-01-26 13:21:46,139 - Mega Sena Conferidor - INFO - Conferência finalizada
+2025-01-26 13:21:46,142 - werkzeug - INFO - 192.168.11.108 - - [26/Jan/2025 13:21:46] "POST /conferir HTTP/1.1" 200 -
+2025-01-26 13:21:46,252 - Mega Sena Conferidor - INFO - Iniciando conferência - Total de jogos: 6
+2025-01-26 13:21:46,255 - Mega Sena Conferidor - INFO - Total de lotes a processar: 1
+2025-01-26 13:21:46,257 - Mega Sena Conferidor - INFO - Processando concursos 1861 até 2790
+2025-01-26 13:21:46,259 - Mega Sena Conferidor - INFO - Processando lote 1/1 - Concursos 1861 até 2790
+2025-01-26 13:21:46,866 - Mega Sena Conferidor - INFO - Lote 1 concluído
+2025-01-26 13:21:46,867 - Mega Sena Conferidor - INFO - Conferência finalizada
+2025-01-26 13:21:46,869 - werkzeug - INFO - 192.168.11.108 - - [26/Jan/2025 13:21:46] "POST /conferir HTTP/1.1" 200 -T /conferir HTTP/1.1" 200 -                                                               ogos: 6
+2025-01-26 13:21:47,012 - Mega Sena Conferidor - INFO - Iniciando conferência - Total de jogos: 6                                                                                   0
+2025-01-26 13:21:47,022 - Mega Sena Conferidor - INFO - Total de lotes a processar: 1     791 até 2820
+2025-01-26 13:21:47,030 - Mega Sena Conferidor - INFO - Processando concursos 2791 até 2820
+
+
+SE EU TIVER QUE PROCESSAR MAIS JOGOS... TIPO 

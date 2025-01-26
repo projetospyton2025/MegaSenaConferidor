@@ -4,6 +4,7 @@ const jogosSelecionados = new Set();
 let conferenciaCancelada = false;
 let dadosUltimaConsulta = null;
 
+
 // Configuração tamanho do lote
 const TAMANHO_LOTE = 930;
 
@@ -31,6 +32,37 @@ function formatarMensagemJogos(quantidade, acao) {
     return '';
 }
 
+async function combinarResultados(resultadosFinais, chunkResultados) {
+    // Combina resumo
+    resultadosFinais.resumo.quatro += chunkResultados.resumo.quatro;
+    resultadosFinais.resumo.cinco += chunkResultados.resumo.cinco;
+    resultadosFinais.resumo.seis += chunkResultados.resumo.seis;
+    resultadosFinais.resumo.total_premios += chunkResultados.resumo.total_premios;
+
+    // Combina acertos
+    resultadosFinais.acertos.push(...chunkResultados.acertos);
+
+    // Atualiza estatísticas dos jogos
+    if (chunkResultados.jogos_stats) {
+        if (!resultadosFinais.jogos_stats) {
+            resultadosFinais.jogos_stats = [];
+        }
+        chunkResultados.jogos_stats.forEach(jogoStat => {
+            const jogoExistente = resultadosFinais.jogos_stats.find(
+                js => JSON.stringify(js.numeros) === JSON.stringify(jogoStat.numeros)
+            );
+            if (jogoExistente) {
+                jogoExistente.total += jogoStat.total;
+                for (let i = 1; i <= 6; i++) {
+                    jogoExistente.distribuicao[i] += jogoStat.distribuicao[i];
+                }
+            } else {
+                resultadosFinais.jogos_stats.push(jogoStat);
+            }
+        });
+    }
+}
+
 // Função para calcular os lotes
 function calcularLotes(inicio, fim) {
     const lotes = [];
@@ -45,27 +77,37 @@ function calcularLotes(inicio, fim) {
 function setupDragAndDrop() {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
-
     dropZone.onclick = () => fileInput.click();
-
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, preventDefaults);
     });
-
     ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => {
             dropZone.classList.add('dragover');
         });
     });
-
     ['dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => {
             dropZone.classList.remove('dragover');
         });
     });
-
     dropZone.addEventListener('drop', handleDrop);
     fileInput.addEventListener('change', handleFileSelect);
+
+    // Adicione aqui o código para seleção dos números
+    const numeros = document.querySelectorAll('.numero');
+    numeros.forEach(numero => {
+        numero.addEventListener('click', () => {
+            const num = parseInt(numero.dataset.numero);
+            if (numero.classList.contains('selecionado')) {
+                numero.classList.remove('selecionado');
+                numerosSelecionados.delete(num);
+            } else if (numerosSelecionados.size < 6) {
+                numero.classList.add('selecionado');
+                numerosSelecionados.add(num);
+            }
+        });
+    });
 }
 
 function preventDefaults(e) {
@@ -82,7 +124,6 @@ async function handleFileSelect(e) {
     const file = e.target.files[0];
     await processFile(file);
 }
-
 async function processFile(file) {
     if (!file) return;
 
@@ -98,12 +139,14 @@ async function processFile(file) {
             body: formData
         });
 
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error);
+        // Verifica status da resposta primeiro
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(errorData);
         }
 
+        const data = await response.json();
+        
         if (data.jogos && data.jogos.length > 0) {
             const jogosAtuais = new Set(jogosIncluidos.map(j => JSON.stringify(j)));
             let jogosNovos = 0;
@@ -121,15 +164,16 @@ async function processFile(file) {
             atualizarContadorJogos();
             alert(formatarMensagemJogos(jogosNovos, 'incluir'));
         } else {
-            alert('Nenhum jogo válido encontrado no arquivo');
+            throw new Error('Nenhum jogo válido encontrado');
         }
     } catch (error) {
-        console.error('Erro:', error);
+        console.error('Erro detalhado:', error);
         alert(`Erro ao processar arquivo: ${error.message}`);
     } finally {
         dropZone.classList.remove('processing');
     }
 }
+
 // Funções de manipulação de jogos
 function adicionarJogoNaLista(jogo) {
     const jogoItem = document.createElement('div');
@@ -581,7 +625,10 @@ async function atualizarInterfaceProgressiva(resultados) {
     if (resultados.jogos_stats) {
         atualizarTabelaJogosSorteados(resultados.jogos_stats);
     }
-}
+};
+
+
+`Processando concursos ${lote.inicio} a ${lote.fim} (${progresso}% dos jogos)...`;
 
 //ALTERADO 24/01/2025
 // Função para calcular lotes
@@ -592,4 +639,16 @@ function calcularLotes(inicio, fim) {
         lotes.push({inicio: i, fim: loteFim});
     }
     return lotes;
-};
+}
+
+});
+
+//ADICIONADO HOJE 26-01-2025
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction) {
+  console.log('Running in production mode');
+} else {
+  console.log('Running in development mode');
+}
+
