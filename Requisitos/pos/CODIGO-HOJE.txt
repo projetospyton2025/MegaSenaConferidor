@@ -1,4 +1,24 @@
 
+Note que cada concurso será conferido em lote.
+O código me mostra que o que importa é o lote e não a quantidade de jojgos.
+Mas acontece que ao adicionar uma quantidade razoavel de jogos acontece o sequinte
+Localhost == Demora, garrega os jogos mas não processa - trava o pc
+No Servidor Render == Demora, garrega os jogos e sai da página - (não possibilitando de fazer mais nada)
+
+A PERGUNTA É A SEGUINTE.
+EXISTE ALGO PARA IMPLEMENTAR PARA FAZER QUE SEJA MAIS RÁPIDO OU FUNCIONAL INDEPENDENTEMENTE DA QUANTIDADE DE JOGOS A CARREGAR
+
+EXEMPLO
+POSSO GARREGAR
+1 Jogo
+10000 JOGOS
+90000 JOGOS
+120000 JOGOS
+290000 JOGOS
+500000 JOGOS
+1000000 JOGOS
+OU SEJA QUERO QUE NÃO TENHA LIMITES JA PENSEI EM ATE GARREGAR
+50000000 DE JOGOS!!!
 
 
 Estrutura
@@ -30,7 +50,10 @@ aiohttp --only-binary=:all: # Para requisições assíncronas novo
 asyncio==3.4.3 # Para processar múltiplas requisições novo
 redis # novo
 pandas # novo
-python-dotenv
+python-dotenv # novo
+asyncio # novo
+waitress # novo
+
 
 
 
