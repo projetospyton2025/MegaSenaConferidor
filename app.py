@@ -486,16 +486,16 @@ def exportar_jogos_sorteados(data, formato):
     except Exception as e:
         raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
 
-
+"""
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5000)
+"""
 
-
-""" LOCALHOST
+ #LOCALHOST
 if __name__ == '__main__':
     app.run(debug=True)
 
-
+"""
 # Agora a parte de configuração da porta
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))  # Obtém a porta do ambiente ou usa 5000 como padrão
