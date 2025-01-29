@@ -1,6 +1,3 @@
-
-
-
 Estrutura
 Mode                 LastWriteTime         Length Name
 ----                 -------------         ------ ----
@@ -31,22 +28,27 @@ asyncio==3.4.3 # Para processar múltiplas requisições novo
 redis # novo
 pandas # novo
 python-dotenv
+python-dotenv # novo
+asyncio # novo
 
+
+#aiohttp 
+#asyncio
+#pip install aiohttp
+#python -c "import aiohttp, asyncio; print(aiohttp.__version__); print(asyncio.__name__)"
 
 
 from flask import Flask, render_template, request, jsonify, send_file
 from redis_config import redis_config
-import requests
 from datetime import datetime
-import os
+from dotenv import load_dotenv
+import logging
 import random
 import aiohttp
 import asyncio
-import redis
 import json
 import pandas as pd
 import io
-import logging
 
 # Configuração básica de logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -75,26 +77,74 @@ def atualizar_estatisticas_jogo(stats, jogo, acertos):
     stats[jogo_key]['distribuicao'][acertos] += 1
     return stats
 
+import os
+
+async def fetch_with_retry(session, url, max_retries=3):
+    timeout = aiohttp.ClientTimeout(total=30)
+    for attempt in range(max_retries):
+        try:
+            async with session.get(url, timeout=timeout) as response:
+                if response.status == 200:
+                    return await response.json()
+                await asyncio.sleep(1)
+        except Exception as e:
+            logger.error(f"Tentativa {attempt + 1} falhou: {str(e)}")
+            if attempt == max_retries - 1:
+                return None
+            await asyncio.sleep(2 ** attempt)
+    return None
+
+async def process_concurso(session, concurso, jogos):
+    try:
+        cached = redis_config.get_cached_result(concurso)
+        if cached:
+            return cached
+            
+        resultado = await fetch_with_retry(session, f"{API_BASE_URL}/megasena/{concurso}")
+        if resultado:
+            redis_config.set_cached_result(concurso, resultado)
+        return resultado
+    except Exception as e:
+        logger.error(f"Erro concurso {concurso}: {e}")
+        return None
+
+
+
+FLASK_RUN_TIMEOUT = 900  # 15 minutos
+CHUNK_SIZE = 1000  # Reduzido de 5000 para 1000
+CONCURSOS_PER_BATCH = 930  # Manter atual divisão de concursos
+MAX_CONCURRENT_REQUESTS = 5  # Reduzido de 10 para 5
+
+# Configuração de logs
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("Mega Sena Conferidor")
+
+#ADICIONADO HOJE 26-01-2025
+# Carregar variáveis do .env
+load_dotenv()
+
+
+app = Flask(__name__)
+
 API_BASE_URL = "https://loteriascaixa-api.herokuapp.com/api"
 
-def get_latest_result():
+async def get_latest_result():
     try:
-        response = requests.get(f"{API_BASE_URL}/megasena/latest")
-        if response.status_code == 200:
-            return response.json()
-        return None
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{API_BASE_URL}/megasena/latest") as response:
+                if response.status == 200:
+                    return await response.json()
+                return None
     except Exception as e:
-        logger.info(f"Erro ao buscar último resultado: {str(e)}")
-        return None
 
 @app.route('/')
-def index():
-    latest = get_latest_result()
+async def index():
+    latest = await get_latest_result()
     ultimo_concurso = latest['concurso'] if latest else 2680
     return render_template('index.html', ultimo_concurso=ultimo_concurso)
 
 @app.route('/gerar_numeros')
-def gerar_numeros():
+async def gerar_numeros():
     numeros = random.sample(range(1, 61), 6)
     return jsonify({'numeros': sorted(numeros)})
 
@@ -198,32 +248,30 @@ def processar_arquivo():
 
     try:
         jogos = []
+        logger.info(f"Processando arquivo: {file.filename}")
         
-        # Tenta processar como texto primeiro
         if file.filename.endswith('.txt'):
             try:
                 content = file.read().decode('utf-8-sig')
-                
                 for line in content.strip().split('\n'):
                     try:
                         line = ''.join(c for c in line if c.isdigit() or c.isspace())
-                        numbers = [int(n) for n in line.strip().split() if n.strip()]
-                        
-                        if (len(numbers) == 6 and 
-                            all(1 <= n <= 60 for n in numbers) and 
-                            len(set(numbers)) == 6):
+                        numbers = [int(n) for n in line.strip().split()]
+                        if len(numbers) == 6 and all(1 <= n <= 60 for n in numbers) and len(set(numbers)) == 6:
                             jogos.append(sorted(numbers))
-                    except (ValueError, TypeError):
+                    except Exception as e:
+                        logger.error(f"Erro na linha: {str(e)}")
                         continue
             except Exception as txt_error:
                 logger.info(f"Erro ao processar TXT: {str(txt_error)}")
                         
         # Se não é txt, tenta processar como Excel
+            except Exception as e:
+                logger.error(f"Erro no TXT: {str(e)}")
+                
         elif file.filename.endswith(('.xlsx', '.xls')):
             try:
-                content = file.read()
-                df = pd.read_excel(io.BytesIO(content))
-                
+                df = pd.read_excel(file)
                 for _, row in df.iterrows():
                     numbers = []
                     for val in row.values[:6]:
@@ -231,9 +279,8 @@ def processar_arquivo():
                             num = int(float(val))
                             if 1 <= num <= 60:
                                 numbers.append(num)
-                        except (ValueError, TypeError):
+                        except:
                             continue
-                    
                     if len(numbers) == 6 and len(set(numbers)) == 6:
                         jogos.append(sorted(numbers))
             except Exception as excel_error:
@@ -261,275 +308,323 @@ def processar_arquivo():
             'error': 'Erro ao processar o arquivo. Verifique o formato e tente novamente.'
         }), 500
         
-
-@app.route('/exportar/<tipo>/<formato>', methods=['POST'])
-def exportar_dados(tipo, formato):
-    try:
-        data = request.json
-        if tipo == 'resumo-acertos':
-            return exportar_resumo_acertos(data, formato)
-        elif tipo == 'jogos-premiados':
-            return exportar_jogos_premiados(data, formato)
-        elif tipo == 'jogos-sorteados':
-            return exportar_jogos_sorteados(data, formato)
+            except Exception as e:
+                logger.error(f"Erro no Excel: {str(e)}")
         else:
-            return jsonify({'error': 'Tipo de exportação inválido'}), 400
+            return jsonify({'error': 'Use .txt ou .xlsx'}), 400
+
+        if not jogos:
+            return jsonify({'error': 'Nenhum jogo válido encontrado'}), 400
+
+        logger.info(f"Jogos processados: {len(jogos)}")
+        return jsonify({'jogos': jogos})
+
     except Exception as e:
         logger.info(f"Erro na exportação: {str(e)}")
+        logger.error(f"Erro geral: {str(e)}")
+        return jsonify({'error': f'Erro ao processar arquivo: {str(e)}'}), 500
+
+
+
+# @app.route('/conferir', methods=['POST'])
+# async def conferir():
+#     try:
+#         data = request.get_json()
+#         inicio = int(data.get('inicio', 1))  # Usa o concurso inicial informado
+#         fim = int(data.get('fim', 2680))     # Usa o concurso final informado
+#         jogos = data['jogos']
+        
+#         logger.info(f"Iniciando conferência - Total de jogos: {len(jogos)}")
+        
+#         # Calcula total de lotes baseado nos concursos informados
+#         total_concursos = fim - inicio + 1
+#         total_lotes = (total_concursos // 930) + (1 if total_concursos % 930 else 0)
+        
+#         logger.info(f"Total de lotes a processar: {total_lotes}")
+#         logger.info(f"Processando concursos {inicio} até {fim}")
+        
+#         resultados = {
+#             'acertos': [],
+#             'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0}
+#         }
+
+#         lote_atual = 1
+#         for i in range(inicio, fim + 1, 930):
+#             fim_lote = min(i + 929, fim)
+#             logger.info(f"Processando lote {lote_atual}/{total_lotes} - Concursos {i} até {fim_lote}")
+            
+#             async with aiohttp.ClientSession() as session:
+#                 for concurso in range(i, fim_lote + 1):
+#                     try:
+#                         cached = redis_config.get_cached_result(concurso)
+#                         if cached:
+#                             resultado = cached
+#                         else:
+#                             async with session.get(f"{API_BASE_URL}/megasena/{concurso}") as response:
+#                                 if response.status != 200:
+#                                     continue
+#                                 resultado = await response.json()
+#                                 redis_config.set_cached_result(concurso, resultado)
+
+#                         dezenas = [int(d) for d in resultado['dezenas']]
+                        
+#                         for jogo in jogos:
+#                             acertos = len(set(jogo) & set(dezenas))
+#                             if acertos >= 4:
+#                                 premio = 0
+#                                 for premiacao in resultado['premiacoes']:
+#                                     if ((acertos == 6 and premiacao['descricao'] == '6 acertos') or
+#                                         (acertos == 5 and premiacao['descricao'] == '5 acertos') or
+#                                         (acertos == 4 and premiacao['descricao'] == '4 acertos')):
+#                                         premio = float(premiacao['valorPremio'])
+#                                         break
+
+#                                 resultados['resumo']['total_premios'] += premio
+                                
+#                                 if acertos == 4: resultados['resumo']['quatro'] += 1
+#                                 elif acertos == 5: resultados['resumo']['cinco'] += 1
+#                                 elif acertos == 6: resultados['resumo']['seis'] += 1
+
+#                                 resultados['acertos'].append({
+#                                     'concurso': resultado['concurso'],
+#                                     'data': resultado['data'],
+#                                     'local': resultado.get('local', ''),
+#                                     'numeros_sorteados': dezenas,
+#                                     'seus_numeros': jogo,
+#                                     'acertos': acertos,
+#                                     'premio': premio
+#                                 })
+
+#                     except Exception as e:
+#                         logger.error(f"Erro no concurso {concurso}: {str(e)}")
+#                         continue
+            
+#             lote_atual += 1
+#             logger.info(f"Lote {lote_atual-1} concluído")
+
+#         logger.info("Conferência finalizada")
+#         return jsonify(resultados)
+    
+#     except Exception as e:
+#         logger.error(f"Erro na conferência: {str(e)}")
+#         return jsonify({'error': str(e)}), 500
+
+# @app.route('/conferir', methods=['POST'])
+# async def conferir():
+#     try:
+#         data = request.get_json()
+#         inicio = int(data.get('inicio', 1))  # Usa o concurso inicial informado
+#         fim = int(data.get('fim', 2680))     # Usa o concurso final informado
+#         jogos = data['jogos']
+
+#         # Dividir jogos em chunks
+#         chunks = [jogos[i:i + CHUNK_SIZE] for i in range(0, len(jogos), CHUNK_SIZE)]
+
+#         # Inicializa resultados
+#         resultados_finais = {
+#             'acertos': [],
+#             'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0}
+#         }
+
+#         # Calcula total de lotes baseado nos concursos informados
+#         total_concursos = fim - inicio + 1
+#         total_lotes = (total_concursos // 930) + (1 if total_concursos % 930 else 0)
+        
+#         logger.info(f"Iniciando conferência - Total de jogos: {len(jogos)}")
+#         logger.info(f"Total de lotes a processar: {total_lotes}")
+#         logger.info(f"Processando concursos {inicio} até {fim}")
+        
+#         # Processar cada chunk de jogos
+#         for chunk_index, chunk in enumerate(chunks):
+#             logger.info(f"Processando chunk {chunk_index + 1}/{len(chunks)}")
+            
+#             lote_atual = 1
+#             # Dividir concursos em lotes
+#             for i in range(inicio, fim + 1, 930):
+#                 fim_lote = min(i + 929, fim)
+#                 logger.info(f"Processando lote {lote_atual}/{total_lotes} - Concursos {i} até {fim_lote}")
+
+#                 async with aiohttp.ClientSession() as session:
+#                     for concurso in range(i, fim_lote + 1):
+#                         try:
+#                             cached = redis_config.get_cached_result(concurso)
+#                             if cached:
+#                                 resultado = cached
+#                             else:
+#                                 async with session.get(f"{API_BASE_URL}/megasena/{concurso}") as response:
+#                                     if response.status != 200:
+#                                         continue
+#                                     resultado = await response.json()
+#                                     redis_config.set_cached_result(concurso, resultado)
+
+#                             dezenas = [int(d) for d in resultado['dezenas']]
+                            
+#                             for jogo in chunk:
+#                                 acertos = len(set(jogo) & set(dezenas))
+#                                 if acertos >= 4:
+#                                     premio = 0
+#                                     for premiacao in resultado['premiacoes']:
+#                                         if ((acertos == 6 and premiacao['descricao'] == '6 acertos') or
+#                                             (acertos == 5 and premiacao['descricao'] == '5 acertos') or
+#                                             (acertos == 4 and premiacao['descricao'] == '4 acertos')):
+#                                             premio = float(premiacao['valorPremio'])
+#                                             break
+
+#                                     resultados_finais['resumo']['total_premios'] += premio
+                                    
+#                                     if acertos == 4: resultados_finais['resumo']['quatro'] += 1
+#                                     elif acertos == 5: resultados_finais['resumo']['cinco'] += 1
+#                                     elif acertos == 6: resultados_finais['resumo']['seis'] += 1
+
+#                                     resultados_finais['acertos'].append({
+#                                         'concurso': resultado['concurso'],
+#                                         'data': resultado['data'],
+#                                         'local': resultado.get('local', ''),
+#                                         'numeros_sorteados': dezenas,
+#                                         'seus_numeros': jogo,
+#                                         'acertos': acertos,
+#                                         'premio': premio
+#                                     })
+
+#                         except Exception as e:
+#                             logger.error(f"Erro no concurso {concurso}: {str(e)}")
+#                             continue
+
+#                 lote_atual += 1
+#                 logger.info(f"Lote {lote_atual-1} concluído")
+
+#                 # Cache intermediário
+#                 cache_key = f"temp_results:{chunk_index}:{i}"
+#                 redis_config.redis_client.setex(
+#                     cache_key,
+#                     3600,  # 1 hora
+#                     json.dumps(resultados_finais)
+#                 )
+
+#         logger.info("Conferência finalizada")
+#         return jsonify(resultados_finais)
+
+#     except Exception as e:
+#         logger.error(f"Erro na conferência: {str(e)}")
+#         return jsonify({'error': str(e)}), 500
+
+@app.route('/conferir', methods=['POST'])
+async def conferir():
+    try:
+        data = request.get_json()
+        inicio = int(data.get('inicio', 1))
+        fim = int(data.get('fim', 2680))
+        jogos = data['jogos']
+
+        CHUNK_SIZE = 1000  # Reduzido para melhor gerenciamento
+        chunks = [jogos[i:i + CHUNK_SIZE] for i in range(0, len(jogos), CHUNK_SIZE)]
+        
+        resultados_finais = {
+            'acertos': [],
+            'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0}
+        }
+
+        timeout = aiohttp.ClientTimeout(total=300)
+        
+        for chunk_index, chunk in enumerate(chunks):
+            logger.info(f"Processando chunk {chunk_index + 1}/{len(chunks)}")
+            
+            for i in range(inicio, fim + 1, 930):
+                fim_lote = min(i + 929, fim)
+                logger.info(f"Processando concursos {i} até {fim_lote}")
+
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    semaphore = asyncio.Semaphore(5)  # Limita a 5 requisições simultâneas
+                    tasks = []
+                    
+                    for concurso in range(i, fim_lote + 1):
+                        async with semaphore:
+                            async def process_single_concurso():
+                                try:
+                                    cached = redis_config.get_cached_result(concurso)
+                                    if cached:
+                                        return cached
+
+                                    for attempt in range(3):
+                                        try:
+                                            async with session.get(f"{API_BASE_URL}/megasena/{concurso}") as response:
+                                                if response.status == 200:
+                                                    resultado = await response.json()
+                                                    redis_config.set_cached_result(concurso, resultado)
+                                                    return resultado
+                                        except Exception as e:
+                                            if attempt == 2:
+                                                logger.error(f"Erro final no concurso {concurso}: {e}")
+                                                return None
+                                            await asyncio.sleep(2 ** attempt)
+                                except Exception as e:
+                                    logger.error(f"Erro no concurso {concurso}: {e}")
+                                    return None
+
+                            task = asyncio.create_task(process_single_concurso())
+                            tasks.append(task)
+                    
+                    resultados = [r for r in await asyncio.gather(*tasks) if r is not None]
+                    
+                    for resultado in resultados:
+                        dezenas = [int(d) for d in resultado['dezenas']]
+                        for jogo in chunk:
+                            acertos = len(set(jogo) & set(dezenas))
+                            if acertos >= 4:
+                                premio = 0
+                                for premiacao in resultado['premiacoes']:
+                                    if ((acertos == 6 and premiacao['descricao'] == '6 acertos') or
+                                        (acertos == 5 and premiacao['descricao'] == '5 acertos') or
+                                        (acertos == 4 and premiacao['descricao'] == '4 acertos')):
+                                        premio = float(premiacao['valorPremio'])
+                                        break
+
+                                resultados_finais['resumo']['total_premios'] += premio
+                                resultados_finais['resumo'][f'{acertos}'] += 1
+
+                                resultados_finais['acertos'].append({
+                                    'concurso': resultado['concurso'],
+                                    'data': resultado['data'],
+                                    'local': resultado.get('local', ''),
+                                    'numeros_sorteados': dezenas,
+                                    'seus_numeros': jogo,
+                                    'acertos': acertos,
+                                    'premio': premio
+                                })
+
+                # Cache intermediário
+                cache_key = f"temp_results:{chunk_index}:{i}"
+                redis_config.redis_client.setex(
+                    cache_key,
+                    3600,
+                    json.dumps(resultados_finais)
+                )
+
+                await asyncio.sleep(1)  # Pequena pausa entre lotes
+
+        return jsonify(resultados_finais)
+
+    except Exception as e:
+        logger.error(f"Erro na conferência: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-def exportar_resumo_acertos(data, formato):
-    try:
-        # Criação do DataFrame com os dados fornecidos
-        df = pd.DataFrame({
-            'Tipo': ['4 Acertos', '5 Acertos', '6 Acertos', 'Total de Prêmios'],
-            'Quantidade': [
-                data['resumo']['quatro'],
-                data['resumo']['cinco'],
-                data['resumo']['seis'],
-                ''
-            ],
-            'Valor Total': [
-                data['resumo'].get('valor_quatro', 0),
-                data['resumo'].get('valor_cinco', 0),
-                data['resumo'].get('valor_seis', 0),
-                data['resumo'].get('total_premios', 0)
-            ]
-        })
+@app.route('/status')
+def get_status():
+    if not stats.start_time:
+        return jsonify({'status': 'idle'})
+        
+    return jsonify({
+        'status': 'processing',
+        'processed_jogos': stats.processed_jogos,
+        'processed_concursos': stats.processed_concursos,
+        'errors': stats.errors,
+        'elapsed_time': time.time() - stats.start_time
+    })
 
-        # Exportação para formato Excel
-        if formato == 'xlsx':
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df.to_excel(writer, sheet_name='Resumo de Acertos', index=False)
-            output.seek(0)
-            return send_file(
-                output,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                as_attachment=True,
-                download_name='resumo_acertos.xlsx'
-            )
-
-        # Exportação para formato HTML
-        elif formato == 'html':
-            html_content = df.to_html(index=False, classes='table table-striped')
-            html = f'''
-            <html>
-            <head>
-                <style>
-                    table {{ border-collapse: collapse; width: 100%; }}
-                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
-                    th {{ background-color: #008751; color: white; }}
-                </style>
-            </head>
-            <body>
-                <h2>Resumo de Acertos</h2>
-                {html_content}
-            </body>
-            </html>
-            '''
-            return send_file(
-                io.BytesIO(html.encode()),
-                mimetype='text/html',
-                as_attachment=True,
-                download_name='resumo_acertos.html'
-            )
-        
-        # Caso o formato não seja suportado
-        else:
-            raise ValueError(f"Formato '{formato}' não suportado. Use 'xlsx' ou 'html'.")
-
-    except Exception as e:
-        raise Exception(f"Erro ao exportar resumo: {str(e)}")
-
-def exportar_jogos_premiados(data, formato):
-    try:
-        rows = []
-        for resultado in data['acertos']:
-            rows.append({
-                'Concurso': resultado['concurso'],
-                'Data': resultado['data'],
-                'Local': resultado['local'],
-                'Números Sorteados': ' '.join(str(n).zfill(2) for n in sorted(resultado['numeros_sorteados'])),
-                'Seu Jogo': ' '.join(str(n).zfill(2) for n in sorted(resultado['seus_numeros'])),
-                'Acertos': resultado['acertos'],
-                'Prêmio': f"R$ {resultado['premio']:,.2f}",
-                'Status': 'Premiado' if resultado['premio'] > 0 else 'Acumulado'
-            })
-        
-        df = pd.DataFrame(rows)
-        
-        if formato == 'xlsx':
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df.to_excel(writer, sheet_name='Jogos Premiados', index=False)
-            output.seek(0)
-            return send_file(
-                output,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                as_attachment=True,
-                download_name='jogos_premiados.xlsx'
-            )
-        
-        elif formato == 'html':
-            html_content = df.to_html(index=False, classes='table table-striped')
-            html = f'''
-            <html>
-            <head>
-                <style>
-                    table {{ border-collapse: collapse; width: 100%; }}
-                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
-                    th {{ background-color: #008751; color: white; }}
-                </style>
-            </head>
-            <body>
-                <h2>Jogos Premiados</h2>
-                {html_content}
-            </body>
-            </html>
-            '''
-            return send_file(
-                io.BytesIO(html.encode()),
-                mimetype='text/html',
-                as_attachment=True,
-                download_name='jogos_premiados.html'
-            )
-    except Exception as e:
-        raise Exception(f"Erro ao exportar jogos premiados: {str(e)}")
-        
-def exportar_jogos_sorteados(data, formato):
-    try:
-        rows = []
-        for jogo in data['jogos_stats']:
-            distribuicao = []
-            for i in range(1, 7):
-                if jogo['distribuicao'].get(i, 0) > 0:
-                    distribuicao.append(f"{i} pontos: {jogo['distribuicao'][i]}")
-            
-            rows.append({
-                'Jogo': ' '.join(str(n).zfill(2) for n in jogo['numeros']),
-                'Total': jogo['total'],
-                'Distribuição': ', '.join(distribuicao)
-            })
-        
-        df = pd.DataFrame(rows)
-        
-        if formato == 'xlsx':
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df.to_excel(writer, sheet_name='Jogos Mais Sorteados', index=False)
-            output.seek(0)
-            return send_file(
-                output,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                as_attachment=True,
-                download_name='jogos_sorteados.xlsx'
-            )
-        
-        elif formato == 'html':
-            html_content = df.to_html(index=False, classes='table table-striped')
-            html = f'''
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <style>
-                    table {{ border-collapse: collapse; width: 100%; }}
-                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
-                    th {{ background-color: #008751; color: white; }}
-                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
-                    tr:hover {{ background-color: #ddd; }}
-                </style>
-            </head>
-            <body>
-                <h2>Jogos Mais Sorteados</h2>
-                {html_content}
-            </body>
-            </html>
-            '''
-            return send_file(
-                io.BytesIO(html.encode('utf-8')),
-                mimetype='text/html',
-                as_attachment=True,
-                download_name='jogos_sorteados.html'
-            )
-    except Exception as e:
-        raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
-
-
-
-def exportar_jogos_sorteados(data, formato):
-    try:
-        # Prepara as linhas de dados
-        rows = []
-        for jogo in data['jogos_stats']:
-            distribuicao = []
-            # Monta a distribuição de acertos (1 a 6 pontos)
-            for i in range(1, 7):
-                if jogo['distribuicao'].get(i, 0) > 0:
-                    distribuicao.append(f"{i} pontos: {jogo['distribuicao'][i]}")
-            
-            # Adiciona cada jogo com suas estatísticas
-            rows.append({
-                'Jogo': ' '.join(str(n).zfill(2) for n in jogo['numeros']),
-                'Total': jogo['total'],
-                'Distribuição': ', '.join(distribuicao)
-            })
-        
-        # Cria DataFrame com os dados
-        df = pd.DataFrame(rows)
-        
-        # Exportação para Excel
-        if formato == 'xlsx':
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df.to_excel(writer, sheet_name='Jogos Mais Sorteados', index=False)
-            output.seek(0)
-            return send_file(
-                output,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                as_attachment=True,
-                download_name='jogos_sorteados.xlsx'
-            )
-        
-        # Exportação para HTML
-        elif formato == 'html':
-            html_content = df.to_html(index=False, classes='table table-striped')
-            html = f'''
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <style>
-                    table {{ border-collapse: collapse; width: 100%; }}
-                    th, td {{ border: 1px solid black; padding: 8px; text-align: left; }}
-                    th {{ background-color: #008751; color: white; }}
-                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
-                    tr:hover {{ background-color: #ddd; }}
-                </style>
-            </head>
-            <body>
-                <h2>Jogos Mais Sorteados</h2>
-                {html_content}
-            </body>
-            </html>
-            '''
-            return send_file(
-                io.BytesIO(html.encode('utf-8')),
-                mimetype='text/html',
-                as_attachment=True,
-                download_name='jogos_sorteados.html'
-            )
-    except Exception as e:
-        raise Exception(f"Erro ao exportar jogos sorteados: {str(e)}")
-
-
+"""
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)
-
-
-""" LOCALHOST
-if __name__ == '__main__':
-    app.run(debug=True)
-
+    app.run(debug=True, host='0.0.0.0', port=5000)
+"""
 
 # Agora a parte de configuração da porta
 if __name__ == '__main__':
@@ -548,6 +643,7 @@ const jogosIncluidos = [];
 const jogosSelecionados = new Set();
 let conferenciaCancelada = false;
 let dadosUltimaConsulta = null;
+
 
 // Configuração tamanho do lote
 const TAMANHO_LOTE = 930;
@@ -576,6 +672,37 @@ function formatarMensagemJogos(quantidade, acao) {
     return '';
 }
 
+async function combinarResultados(resultadosFinais, chunkResultados) {
+    // Combina resumo
+    resultadosFinais.resumo.quatro += chunkResultados.resumo.quatro;
+    resultadosFinais.resumo.cinco += chunkResultados.resumo.cinco;
+    resultadosFinais.resumo.seis += chunkResultados.resumo.seis;
+    resultadosFinais.resumo.total_premios += chunkResultados.resumo.total_premios;
+
+    // Combina acertos
+    resultadosFinais.acertos.push(...chunkResultados.acertos);
+
+    // Atualiza estatísticas dos jogos
+    if (chunkResultados.jogos_stats) {
+        if (!resultadosFinais.jogos_stats) {
+            resultadosFinais.jogos_stats = [];
+        }
+        chunkResultados.jogos_stats.forEach(jogoStat => {
+            const jogoExistente = resultadosFinais.jogos_stats.find(
+                js => JSON.stringify(js.numeros) === JSON.stringify(jogoStat.numeros)
+            );
+            if (jogoExistente) {
+                jogoExistente.total += jogoStat.total;
+                for (let i = 1; i <= 6; i++) {
+                    jogoExistente.distribuicao[i] += jogoStat.distribuicao[i];
+                }
+            } else {
+                resultadosFinais.jogos_stats.push(jogoStat);
+            }
+        });
+    }
+}
+
 // Função para calcular os lotes
 function calcularLotes(inicio, fim) {
     const lotes = [];
@@ -590,27 +717,37 @@ function calcularLotes(inicio, fim) {
 function setupDragAndDrop() {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
-
     dropZone.onclick = () => fileInput.click();
-
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, preventDefaults);
     });
-
     ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => {
             dropZone.classList.add('dragover');
         });
     });
-
     ['dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => {
             dropZone.classList.remove('dragover');
         });
     });
-
     dropZone.addEventListener('drop', handleDrop);
     fileInput.addEventListener('change', handleFileSelect);
+
+    // Adicione aqui o código para seleção dos números
+    const numeros = document.querySelectorAll('.numero');
+    numeros.forEach(numero => {
+        numero.addEventListener('click', () => {
+            const num = parseInt(numero.dataset.numero);
+            if (numero.classList.contains('selecionado')) {
+                numero.classList.remove('selecionado');
+                numerosSelecionados.delete(num);
+            } else if (numerosSelecionados.size < 6) {
+                numero.classList.add('selecionado');
+                numerosSelecionados.add(num);
+            }
+        });
+    });
 }
 
 function preventDefaults(e) {
@@ -627,7 +764,6 @@ async function handleFileSelect(e) {
     const file = e.target.files[0];
     await processFile(file);
 }
-
 async function processFile(file) {
     if (!file) return;
 
@@ -643,12 +779,14 @@ async function processFile(file) {
             body: formData
         });
 
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error);
+        // Verifica status da resposta primeiro
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(errorData);
         }
 
+        const data = await response.json();
+        
         if (data.jogos && data.jogos.length > 0) {
             const jogosAtuais = new Set(jogosIncluidos.map(j => JSON.stringify(j)));
             let jogosNovos = 0;
@@ -666,15 +804,16 @@ async function processFile(file) {
             atualizarContadorJogos();
             alert(formatarMensagemJogos(jogosNovos, 'incluir'));
         } else {
-            alert('Nenhum jogo válido encontrado no arquivo');
+            throw new Error('Nenhum jogo válido encontrado');
         }
     } catch (error) {
-        console.error('Erro:', error);
+        console.error('Erro detalhado:', error);
         alert(`Erro ao processar arquivo: ${error.message}`);
     } finally {
         dropZone.classList.remove('processing');
     }
 }
+
 // Funções de manipulação de jogos
 function adicionarJogoNaLista(jogo) {
     const jogoItem = document.createElement('div');
@@ -1024,133 +1163,112 @@ document.addEventListener('DOMContentLoaded', function() {
         alert('1 jogo foi incluído com sucesso!');
         limparBtn.click();
     });
+// Botão Conferir
+conferirBtn.addEventListener('click', async () => {
+    if (jogosIncluidos.length === 0) {
+        alert('Inclua pelo menos um jogo antes de conferir!');
+        return;
+    }
 
-    // Botão Conferir
-    conferirBtn.addEventListener('click', async () => {
-        if (jogosIncluidos.length === 0) {
-            alert('Inclua pelo menos um jogo antes de conferir!');
-            return;
-        }
+    const inicio = parseInt(document.getElementById('inicio').value);
+    const fim = parseInt(document.getElementById('fim').value);
 
-        const inicio = parseInt(document.getElementById('inicio').value);
-        const fim = parseInt(document.getElementById('fim').value);
+    if (!inicio || !fim || inicio > fim) {
+        alert('Verifique os números dos concursos!');
+        return;
+    }
 
-        if (!inicio || !fim || inicio > fim) {
-            alert('Verifique os números dos concursos!');
-            return;
-        }
+    overlay.style.display = 'flex';
+    conferenciaCancelada = false;
+    toggleBotoesExportacao(false);
 
-        // Oculta os botões de exportação antes de iniciar nova consulta
-        toggleBotoesExportacao// Oculta os botões de exportação antes de iniciar nova consulta
-        toggleBotoesExportacao(false);
+    try {
+        const resultadosFinais = {
+            acertos: [],
+            resumo: { quatro: 0, cinco: 0, seis: 0, total_premios: 0 },
+            jogos_stats: []
+        };
 
-        overlay.style.display = 'flex';
-        conferenciaCancelada = false;
+        // Processa jogos em chunks
+        const CHUNK_SIZE = 5000;
+        for (let i = 0; i < jogosIncluidos.length && !conferenciaCancelada; i += CHUNK_SIZE) {
+            const chunkJogos = jogosIncluidos.slice(i, i + CHUNK_SIZE);
+            const progresso = ((i / jogosIncluidos.length) * 100).toFixed(1);
+            
+            document.querySelector('.progress-text').textContent = 
+                `Processando ${progresso}% dos jogos (${i + 1} até ${Math.min(i + CHUNK_SIZE, jogosIncluidos.length)})...`;
 
-        // Calcula os lotes para processamento
-        const lotes = calcularLotes(inicio, fim);
-        try {
+            // Processa cada chunk em lotes de concursos
+            const lotes = calcularLotes(inicio, fim);
             for (const lote of lotes) {
                 if (conferenciaCancelada) break;
 
                 document.querySelector('.progress-text').textContent = 
-                    `Processando concursos ${lote.inicio} a ${lote.fim}...`;
+                    `Processando concursos ${lote.inicio} a ${lote.fim} (${progresso}% dos jogos)...`;
 
                 const response = await fetch('/conferir', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         inicio: lote.inicio,
                         fim: lote.fim,
-                        jogos: jogosIncluidos
+                        jogos: chunkJogos
                     })
                 });
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Erro ao conferir jogos');
-                }
-
-                const data = await response.json();
-                dadosUltimaConsulta = data; // Armazena os dados da última consulta
-
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                if (data.message) {
-                    alert(data.message);
-                    continue;
-                }
-
-                // Atualizar contagens e valores
-                document.getElementById('quatro-acertos').textContent = data.resumo.quatro;
-                document.getElementById('cinco-acertos').textContent = data.resumo.cinco;
-                document.getElementById('seis-acertos').textContent = data.resumo.seis;
-
-                // Atualizar valores em reais
-                let valorQuadra = 0, valorQuina = 0, valorSena = 0;
-                let temQuadra = false, temQuina = false, temSena = false;
-
-                if (data.acertos) {
-                    data.acertos.forEach(resultado => {
-                        if (resultado.acertos === 4) {
-                            valorQuadra += resultado.premio;
-                            temQuadra = true;
-                        }
-                        if (resultado.acertos === 5) {
-                            valorQuina += resultado.premio;
-                            temQuina = true;
-                        }
-                        if (resultado.acertos === 6) {
-                            valorSena += resultado.premio;
-                            temSena = true;
-                        }
-                    });
-                }
-
-                // Atualizar os valores nos cartões
-                document.getElementById('quatro-valor').textContent = temQuadra && valorQuadra > 0 ? 
-                    `R$ ${valorQuadra.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-                    'Não houve ganhadores';
-
-                document.getElementById('cinco-valor').textContent = temQuina && valorQuina > 0 ? 
-                    `R$ ${valorQuina.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-                    'Não houve ganhadores';
-
-                document.getElementById('seis-valor').textContent = temSena && valorSena > 0 ? 
-                    `R$ ${valorSena.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-                    'Não houve ganhadores';
-
-                // Atualizar detalhes e tabela
-                if (data.acertos && data.acertos.length > 0) {
-                    atualizarDetalhesETabela(data);
-                    // Mostra os botões de exportação após processar com sucesso
-                    toggleBotoesExportacao(true);
-                } else {
-                    toggleBotoesExportacao(false);
-                }
-
-                // Atualizar tabela de jogos sorteados
-                if (data.jogos_stats) {
-                    atualizarTabelaJogosSorteados(data.jogos_stats);
-                }
+                if (!response.ok) throw new Error('Erro ao processar jogos');
+                
+                const chunkResultados = await response.json();
+                await combinarResultados(resultadosFinais, chunkResultados);
+                await atualizarInterfaceProgressiva(resultadosFinais);
             }
-        } catch (error) {
-            console.error('Erro detalhado:', error);
-            toggleBotoesExportacao(false);
-            if (error.message.includes('<!DOCTYPE')) {
-                alert('O serviço está temporariamente indisponível. Por favor, tente novamente mais tarde ou reduza o intervalo de concursos.');
-            } else {
-                alert(error.message);
-            }
-        } finally {
-            overlay.style.display = 'none';
         }
-    });
+
+        dadosUltimaConsulta = resultadosFinais;
+        toggleBotoesExportacao(true);
+
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Ocorreu um erro ao processar os jogos. Tente novamente.');
+    } finally {
+        overlay.style.display = 'none';
+    }
 });
+
+async function atualizarInterfaceProgressiva(resultados) {
+    document.getElementById('quatro-acertos').textContent = resultados.resumo.quatro;
+    document.getElementById('cinco-acertos').textContent = resultados.resumo.cinco;
+    document.getElementById('seis-acertos').textContent = resultados.resumo.seis;
+
+    const total_premios = resultados.resumo.total_premios;
+    const premiosCard = {
+        quatro: resultados.acertos.filter(r => r.acertos === 4).reduce((sum, r) => sum + r.premio, 0),
+        cinco: resultados.acertos.filter(r => r.acertos === 5).reduce((sum, r) => sum + r.premio, 0),
+        seis: resultados.acertos.filter(r => r.acertos === 6).reduce((sum, r) => sum + r.premio, 0)
+    };
+
+    document.getElementById('quatro-valor').textContent = premiosCard.quatro > 0 ? 
+        `R$ ${premiosCard.quatro.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+        'Não houve ganhadores';
+    document.getElementById('cinco-valor').textContent = premiosCard.cinco > 0 ? 
+        `R$ ${premiosCard.cinco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+        'Não houve ganhadores';
+    document.getElementById('seis-valor').textContent = premiosCard.seis > 0 ? 
+        `R$ ${premiosCard.seis.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+        'Não houve ganhadores';
+
+    if (resultados.acertos && resultados.acertos.length > 0) {
+        atualizarDetalhesETabela(resultados);
+        toggleBotoesExportacao(true);
+    }
+
+    if (resultados.jogos_stats) {
+        atualizarTabelaJogosSorteados(resultados.jogos_stats);
+    }
+};
+
+
+`Processando concursos ${lote.inicio} a ${lote.fim} (${progresso}% dos jogos)...`;
 
 //ALTERADO 24/01/2025
 // Função para calcular lotes
@@ -1254,7 +1372,82 @@ redis_config = RedisConfig()
 
 #.gitignore
 .env
+});
 
+//ADICIONADO HOJE 26-01-2025
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction) {
+  console.log('Running in production mode');
+} else {
+  console.log('Running in development mode');
+}
+# processing.py
+import asyncio
+from typing import List, Dict
+import aiohttp
+
+async def process_concurso(session: aiohttp.ClientSession, 
+                          concurso: int, 
+                          jogos: List[List[int]]) -> Dict:
+    try:
+        async with session.get(f"{API_BASE_URL}/megasena/{concurso}") as response:
+            if response.status != 200:
+                return None
+            
+            resultado = await response.json()
+            dezenas = [int(d) for d in resultado['dezenas']]
+            
+            resultados = {
+                'acertos': [],
+                'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0}
+            }
+            
+            for jogo in jogos:
+                acertos = len(set(jogo) & set(dezenas))
+                if acertos >= 4:
+                    # Processar premiações
+                    premio = calcular_premio(resultado, acertos)
+                    resultados['resumo'][f'{acertos}'] += 1
+                    resultados['resumo']['total_premios'] += premio
+                    
+                    resultados['acertos'].append({
+                        'concurso': concurso,
+                        'acertos': acertos,  
+                        'premio': premio,
+                        # ... outros campos
+                    })
+                    
+            return resultados
+            
+    except Exception as e:
+        logger.error(f"Erro processando concurso {concurso}: {e}")
+        return None
+async def process_batch(jogos: List[List[int]], 
+                       inicio: int, 
+                       fim: int) -> Dict:
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        
+        for concurso in range(inicio, fim + 1):
+            async with semaphore:
+                task = asyncio.create_task(
+                    process_concurso(session, concurso, jogos)
+                )
+                tasks.append(task)
+                
+        results = await asyncio.gather(*tasks)
+        return combine_results(results)
+		
+		
+import redis
+import os
+from typing import Optional
+import logging
+import json
+from ast import literal_eval
+from dotenv import load_dotenv
 
 #env
 # Arquivo .env
@@ -1262,7 +1455,49 @@ REDIS_HOST=redis-13833.c336.samerica-east1-1.gce.redns.redis-cloud.com
 REDIS_PORT=13833
 REDIS_PASSWORD=B058xThhTvAbptQa0s25EAGk7A5u473O
 REDIS_DB=0
+# Carrega as variáveis do arquivo .env
+load_dotenv()
 
+class RedisConfig:
+    def __init__(self):
+        self.logger = self._setup_logger()
+        self.redis_client = self._initialize_redis()
+        self.CACHE_EXPIRATION = 60 * 60 * 24  # 24 horas
+
+    def _setup_logger(self) -> logging.Logger:
+        logger = logging.getLogger('RedisConfig')
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        return logger
+
+    def _initialize_redis(self) -> Optional[redis.Redis]:
+        try:
+            redis_url = os.getenv("REDIS_URL")
+            if redis_url:  # Prioridade para a URL completa, se definida
+                client = redis.from_url(redis_url)
+                client.ping()
+                self.logger.info("Connected to Redis via URL")
+                return client
+            else:
+                # Conexão usando host, port e senha individuais
+                client = redis.Redis(
+                    host=os.getenv('REDIS_HOST'),
+                    port=int(os.getenv('REDIS_PORT')),
+                    password=os.getenv('REDIS_PASSWORD'),
+                    db=int(os.getenv('REDIS_DB', 0)),
+                    decode_responses=True,
+                    socket_timeout=5,
+                    retry_on_timeout=True
+                )
+                client.ping()
+                self.logger.info("Connected to Redis via parameters")
+                return client
+        except Exception as e:
+            self.logger.error(f"A conexão com o Redis falhou: {str(e)}")
+            return None
 
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -1479,8 +1714,258 @@ REDIS_DB=0
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
+    def get_cached_result(self, concurso: int) -> Optional[dict]:
+        if not self.redis_client:
+            return None
 
+        try:
+            cached = self.redis_client.get(f"megasena:{concurso}")
+            if not cached:
+                return None
+            try:
+                return json.loads(cached)
+            except:
+                try:
+                    return literal_eval(cached)
+                except:
+                    return None
+        except Exception as e:
+            self.logger.error(f"Cache retrieval error for contest {concurso}: {str(e)}")
+            return None
 
+    def set_cached_result(self, concurso: int, data: dict) -> bool:
+        if not self.redis_client:
+            return False
+
+        try:
+            serialized = json.dumps(data, ensure_ascii=False)
+            self.redis_client.setex(
+                f"megasena:{concurso}",
+                self.CACHE_EXPIRATION,
+                serialized
+            )
+            return True
+        except Exception as e:
+            self.logger.error(f"Cache storage error for contest {concurso}: {str(e)}")
+            return False
+
+redis_config = RedisConfig()
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MegaSena Conferidor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Conferidor MegaSena</h1>
+
+        <h1>Informação importante!</h1>
+        <h2>Para os Jogos:</h2>
+        <ul>
+            <li>Você pode carregar quantos jogos quiser (20 mil, 80 mil, 100 mil...)</li>
+            <li>Não há limite para quantidade de jogos</li>
+            <li>Todos os jogos serão verificados em cada lote</li>
+        </ul>
+        <h2>Para os Concursos:</h2>
+        <ul>
+            <li>O sistema agora processa em lotes de 930 concursos</li>
+            <li>
+                Por exemplo, se você quiser verificar do concurso 1 até o 2816:
+                <ul>
+                    <li>Lote 1: concursos 1-930</li>
+                    <li>Lote 2: concursos 931-1860</li>
+                    <li>Lote 3: concursos 1861-2790</li>
+                    <li>Lote 4: concursos 2791-2816</li>
+                </ul>
+            </li>
+        </ul>
+        <h2>Acumulação de Resultados:</h2>
+        <ul>
+            <li>O sistema mantém um acumulador que vai somando:</li>
+            <ul>
+                <li>Quantidade de acertos (quadra, quina, sena)</li>
+                <li>Valores dos prêmios</li>
+                <li>Todos os jogos premiados</li>
+                <li>Estatísticas gerais</li>
+            </ul>
+        </ul>
+        <p>
+            <pre>
+                NA PRÁTICA...
+                Se você tem 50.000 jogos:
+                    Lote 1 (1-930): 
+                    - Processa os 50.000 jogos
+                    - Guarda resultados
+                    ↓
+                    Lote 2 (931-1860):
+                    - Processa os mesmos 50.000 jogos
+                    - Soma com resultados anteriores
+                    ↓
+                    E assim por diante...
+            </pre>
+            Os lotes sempre serão divididos de 930 à 930, então no <b><u>Concurso Inicial</u></b> adicione o concurso que quiser, selecione o checkbox <b><u>Somente Premiados</u></b>, e aguarde a conferencia.
+
+        </p>
+
+        <div class="volante">
+            <h2>Selecione 6 números</h2>
+            <div class="numeros">
+                {% for i in range(1, 61) %}
+                    <button type="button" class="numero" data-numero="{{ i }}">{{ '%02d' % i }}</button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="drop-zone" id="drop-zone">
+            <div class="drop-zone-content">
+                <p>Arraste e solte seu arquivo aqui ou clique para selecionar</p>
+                <p class="drop-zone-hint">Arquivos .txt ou .xlsx</p>
+                <input type="file" id="file-input" accept=".txt,.xlsx" hidden>
+            </div>
+        </div>
+
+        <div class="controles">
+            <div class="input-group">
+                <label for="inicio">Concurso Inicial:</label>
+                <input type="number" id="inicio" min="1">
+            </div>
+            <div class="input-group">
+                <label for="fim">Concurso Final:</label>
+                <input type="number" id="fim" min="1" value="{{ ultimo_concurso }}">
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="somente-premiados">
+                <label for="somente-premiados">Somente premiados</label>
+            </div>
+        </div>
+
+        <div class="acoes">
+            <button id="incluir" class="btn btn-azul">Incluir Jogo</button>
+            <button id="limpar" class="btn btn-vermelho">Limpar</button>
+            <button id="sugestao" class="btn btn-roxo">Palpite</button>
+            <button id="conferir" class="btn btn-verde">Conferir</button>
+        </div>
+        <div class="jogos-incluidos">
+            <h3>Jogos Incluídos (<span id="contador-jogos">0</span> jogos)</h3>
+            <div id="lista-jogos" class="lista-jogos"></div>
+        </div>
+
+        <div class="acoes-jogos">
+            <button id="btn-remover-selecionados" class="btn-acao" disabled>
+                Remover Selecionados
+            </button>
+            <button id="btn-limpar-todos" class="btn-acao">
+                Limpar Todos
+            </button>
+        </div>
+
+        <div id="overlay" class="overlay" style="display: none;">
+            <div class="progress">
+                <div class="progress-bar"></div>
+                <div class="progress-text">Conferindo jogos...</div>
+                <button id="btn-cancelar-conferencia" class="btn-cancelar">Cancelar Conferência</button>
+            </div>
+        </div>
+
+        <div class="resultados">
+            <h2>Resumo de acertos</h2>
+            <div class="export-buttons hidden">
+                <button onclick="exportarDados('resumo-acertos', 'xlsx')" class="btn-export">
+                    <i class="fas fa-file-excel"></i> Excel
+                </button>
+                <button onclick="exportarDados('resumo-acertos', 'html')" class="btn-export">
+                    <i class="fas fa-file-code"></i> HTML
+                </button>
+            </div>
+
+            <div class="cards">
+                <div class="card">
+                    <h3>4 Acertos</h3>
+                    <p class="contagem" id="quatro-acertos">0</p>
+                    <p class="valor-premio" id="quatro-valor">R$ 0,00</p>
+                </div>
+                <div class="card">
+                    <h3>5 Acertos</h3>
+                    <p class="contagem" id="cinco-acertos">0</p>
+                    <p class="valor-premio" id="cinco-valor">R$ 0,00</p>
+                </div>
+                <div class="card">
+                    <h3>6 Acertos</h3>
+                    <p class="contagem" id="seis-acertos">0</p>
+                    <p class="valor-premio" id="seis-valor">R$ 0,00</p>
+                </div>
+            </div>
+            <div id="detalhes-resultados" class="detalhes-resultados"></div>
+
+            <div class="tabela-resumo">
+                <h2>Resumo dos Jogos Premiados</h2>
+                <div class="export-buttons hidden">
+                    <button onclick="exportarDados('jogos-premiados', 'xlsx')" class="btn-export">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportarDados('jogos-premiados', 'html')" class="btn-export">
+                        <i class="fas fa-file-code"></i> HTML
+                    </button>
+                </div>
+                <div class="tabela-container">
+                    <table class="tabela-premios">
+                        <thead>
+                            <tr>
+                                <th>Concurso</th>
+                                <th>Data</th>
+                                <th>Local</th>
+                                <th>Números Sorteados</th>
+                                <th>Seu Jogo</th>
+                                <th>Acertos</th>
+                                <th>Prêmio</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabela-resultados">
+                            <!-- Será preenchido via JavaScript -->
+                        </tbody>
+                        <tfoot id="tabela-totais">
+                            <tr>
+                                <td colspan="6"><strong>Total de Prêmios</strong></td>
+                                <td colspan="2" class="total-premios"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <div class="jogos-mais-sorteados">
+                <h2>Jogos Mais Sorteados</h2>
+                <div class="export-buttons hidden">
+                    <button onclick="exportarDados('jogos-sorteados', 'xlsx')" class="btn-export">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button onclick="exportarDados('jogos-sorteados', 'html')" class="btn-export">
+                        <i class="fas fa-file-code"></i> HTML
+                    </button>
+                </div>
+                <div class="tabela-container">
+                    <table class="tabela-premios" id="tabela-jogos-sorteados">
+                        <thead>
+                            <tr>
+                                <th>Meu Jogo</th>
+                                <th>Total de Acertos</th>
+                                <th>Distribuição</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
  :root {
     --primary-color: #008751;
     --secondary-color: #005c36;
@@ -2409,3 +2894,4 @@ body {
 }
 
 
+}

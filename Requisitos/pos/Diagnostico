@@ -1,0 +1,94 @@
+neste resultado você não tem 4 lotes, e sim 4 rodadas de conferência, com cada rodada processando apenas 1 lote. Isso fica evidente porque, em cada trecho do log, o programa informa:
+"Total de lotes a processar: 1" e "Processando lote 1/1".
+
+Portanto, cada conferência analisou um único lote de concursos, mas em diferentes intervalos:
+
+Concursos 1 até 930
+Concursos 931 até 1860
+Concursos 1861 até 2790
+Concursos 2791 até 2820 ( a informação aqui será sempre aumentada de semana a semana, mas a conferência pode e deve permanecer sempre 630 ok)
+
+2025-01-26 13:21:44,877 - Mega Sena Conferidor - INFO - Iniciando conferência - Total de jogos: 6
+2025-01-26 13:21:44,878 - Mega Sena Conferidor - INFO - Total de lotes a processar: 1
+2025-01-26 13:21:44,878 - Mega Sena Conferidor - INFO - Processando concursos 1 até 930
+2025-01-26 13:21:44,878 - Mega Sena Conferidor - INFO - Processando lote 1/1 - Concursos 1 até 930
+2025-01-26 13:21:45,414 - Mega Sena Conferidor - INFO - Lote 1 concluído
+2025-01-26 13:21:45,415 - Mega Sena Conferidor - INFO - Conferência finalizada
+2025-01-26 13:21:45,418 - werkzeug - INFO - 192.168.11.108 - - [26/Jan/2025 13:21:45] "POST /conferir HTTP/1.1" 200 -
+2025-01-26 13:21:45,531 - Mega Sena Conferidor - INFO - Iniciando conferência - Total de jogos: 6
+2025-01-26 13:21:45,535 - Mega Sena Conferidor - INFO - Total de lotes a processar: 1
+2025-01-26 13:21:45,538 - Mega Sena Conferidor - INFO - Processando concursos 931 até 1860
+2025-01-26 13:21:45,540 - Mega Sena Conferidor - INFO - Processando lote 1/1 - Concursos 931 até 1860
+2025-01-26 13:21:46,139 - Mega Sena Conferidor - INFO - Lote 1 concluído
+2025-01-26 13:21:46,139 - Mega Sena Conferidor - INFO - Conferência finalizada
+2025-01-26 13:21:46,142 - werkzeug - INFO - 192.168.11.108 - - [26/Jan/2025 13:21:46] "POST /conferir HTTP/1.1" 200 -
+2025-01-26 13:21:46,252 - Mega Sena Conferidor - INFO - Iniciando conferência - Total de jogos: 6
+2025-01-26 13:21:46,255 - Mega Sena Conferidor - INFO - Total de lotes a processar: 1
+2025-01-26 13:21:46,257 - Mega Sena Conferidor - INFO - Processando concursos 1861 até 2790
+2025-01-26 13:21:46,259 - Mega Sena Conferidor - INFO - Processando lote 1/1 - Concursos 1861 até 2790
+2025-01-26 13:21:46,866 - Mega Sena Conferidor - INFO - Lote 1 concluído
+2025-01-26 13:21:46,867 - Mega Sena Conferidor - INFO - Conferência finalizada
+2025-01-26 13:21:46,869 - werkzeug - INFO - 192.168.11.108 - - [26/Jan/2025 13:21:46] "POST /conferir HTTP/1.1" 200 -T /conferir HTTP/1.1" 200 -                                                               ogos: 6
+2025-01-26 13:21:47,012 - Mega Sena Conferidor - INFO - Iniciando conferência - Total de jogos: 6                                                                                   0
+2025-01-26 13:21:47,022 - Mega Sena Conferidor - INFO - Total de lotes a processar: 1     791 até 2820
+2025-01-26 13:21:47,030 - Mega Sena Conferidor - INFO - Processando concursos 2791 até 2820
+
+
+SE EU TIVER QUE PROCESSAR MAIS JOGOS... TIPO 
+10.000
+50.000
+100.000
+500.000
+1.000,00 
+50.000,00
+de jogos o código está preparado?? eu precisaria fazer alguma coisa... 
+Se precisar fazer me fala pois o código esta por completo aqui e deve ser analzado
+pois certamente o usuario irá querer inserir uma grande quantidade de jogos a serem conferidos
+e será preciso assegurar que não haverá sobrecarga no sistema ou que ele não trave.
+
+
+
+
+Ele irá rodar no servidor Render... 
+No servidor ja tenho variaveis setadas do tipo
+FLASK_RUN_TIMEOUT = 300
+REDIS_URL = redis://default:B058xThhTvAbptQa0s25EAGk7A5u473O@redis-13833.c336.samerica-east1-1.gce.redns.redis-cloud.com:13833
+
+
+Situação das dependencias.. instalada no amviente local, virtual
+(venv) PS H:\Meu Drive\ProjetosPython\Loterias\Conferidores\megasenaconferidor> pip list
+Package            Version
+------------------ -----------
+aiohappyeyeballs   2.4.4
+aiohttp            3.11.11
+aiosignal          1.3.2
+asgiref            3.8.1
+asyncio            3.4.3
+attrs              25.1.0
+blinker            1.9.0
+certifi            2024.12.14
+charset-normalizer 3.4.1
+click              8.1.8
+colorama           0.4.6
+Flask              3.1.0
+frozenlist         1.5.0
+idna               3.10
+itsdangerous       2.2.0
+Jinja2             3.1.5
+MarkupSafe         3.0.2
+multidict          6.1.0
+numpy              2.2.2
+pandas             2.2.3
+pip                24.3.1
+propcache          0.2.1
+python-dateutil    2.9.0.post0
+python-dotenv      1.0.1
+pytz               2024.2
+redis              5.2.1
+requests           2.32.3
+six                1.17.0
+tzdata             2025.1
+urllib3            2.3.0
+Werkzeug           3.1.3
+yarl               1.18.3
+

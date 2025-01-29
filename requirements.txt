@@ -8,4 +8,15 @@ aiohttp --only-binary=:all: # Para requisições assíncronas novo
 asyncio==3.4.3 # Para processar múltiplas requisições novo
 redis # novo
 pandas # novo
-python-dotenv
+python-dotenv # novo
+asyncio # novo
+
+
+
+#aiohttp 
+#asyncio
+#pip install aiohttp
+#python -c "import aiohttp, asyncio; print(aiohttp.__version__); print(asyncio.__name__)"
+
+
+

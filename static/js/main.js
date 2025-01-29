@@ -4,6 +4,7 @@ const jogosSelecionados = new Set();
 let conferenciaCancelada = false;
 let dadosUltimaConsulta = null;
 
+
 // Configuração tamanho do lote
 const TAMANHO_LOTE = 930;
 
@@ -31,6 +32,37 @@ function formatarMensagemJogos(quantidade, acao) {
     return '';
 }
 
+async function combinarResultados(resultadosFinais, chunkResultados) {
+    // Combina resumo
+    resultadosFinais.resumo.quatro += chunkResultados.resumo.quatro;
+    resultadosFinais.resumo.cinco += chunkResultados.resumo.cinco;
+    resultadosFinais.resumo.seis += chunkResultados.resumo.seis;
+    resultadosFinais.resumo.total_premios += chunkResultados.resumo.total_premios;
+
+    // Combina acertos
+    resultadosFinais.acertos.push(...chunkResultados.acertos);
+
+    // Atualiza estatísticas dos jogos
+    if (chunkResultados.jogos_stats) {
+        if (!resultadosFinais.jogos_stats) {
+            resultadosFinais.jogos_stats = [];
+        }
+        chunkResultados.jogos_stats.forEach(jogoStat => {
+            const jogoExistente = resultadosFinais.jogos_stats.find(
+                js => JSON.stringify(js.numeros) === JSON.stringify(jogoStat.numeros)
+            );
+            if (jogoExistente) {
+                jogoExistente.total += jogoStat.total;
+                for (let i = 1; i <= 6; i++) {
+                    jogoExistente.distribuicao[i] += jogoStat.distribuicao[i];
+                }
+            } else {
+                resultadosFinais.jogos_stats.push(jogoStat);
+            }
+        });
+    }
+}
+
 // Função para calcular os lotes
 function calcularLotes(inicio, fim) {
     const lotes = [];
@@ -45,27 +77,37 @@ function calcularLotes(inicio, fim) {
 function setupDragAndDrop() {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
-
     dropZone.onclick = () => fileInput.click();
-
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, preventDefaults);
     });
-
     ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => {
             dropZone.classList.add('dragover');
         });
     });
-
     ['dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => {
             dropZone.classList.remove('dragover');
         });
     });
-
     dropZone.addEventListener('drop', handleDrop);
     fileInput.addEventListener('change', handleFileSelect);
+
+    // Adicione aqui o código para seleção dos números
+    const numeros = document.querySelectorAll('.numero');
+    numeros.forEach(numero => {
+        numero.addEventListener('click', () => {
+            const num = parseInt(numero.dataset.numero);
+            if (numero.classList.contains('selecionado')) {
+                numero.classList.remove('selecionado');
+                numerosSelecionados.delete(num);
+            } else if (numerosSelecionados.size < 6) {
+                numero.classList.add('selecionado');
+                numerosSelecionados.add(num);
+            }
+        });
+    });
 }
 
 function preventDefaults(e) {
@@ -82,7 +124,6 @@ async function handleFileSelect(e) {
     const file = e.target.files[0];
     await processFile(file);
 }
-
 async function processFile(file) {
     if (!file) return;
 
@@ -98,12 +139,14 @@ async function processFile(file) {
             body: formData
         });
 
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error);
+        // Verifica status da resposta primeiro
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(errorData);
         }
 
+        const data = await response.json();
+        
         if (data.jogos && data.jogos.length > 0) {
             const jogosAtuais = new Set(jogosIncluidos.map(j => JSON.stringify(j)));
             let jogosNovos = 0;
@@ -121,15 +164,16 @@ async function processFile(file) {
             atualizarContadorJogos();
             alert(formatarMensagemJogos(jogosNovos, 'incluir'));
         } else {
-            alert('Nenhum jogo válido encontrado no arquivo');
+            throw new Error('Nenhum jogo válido encontrado');
         }
     } catch (error) {
-        console.error('Erro:', error);
+        console.error('Erro detalhado:', error);
         alert(`Erro ao processar arquivo: ${error.message}`);
     } finally {
         dropZone.classList.remove('processing');
     }
 }
+
 // Funções de manipulação de jogos
 function adicionarJogoNaLista(jogo) {
     const jogoItem = document.createElement('div');
@@ -479,133 +523,112 @@ document.addEventListener('DOMContentLoaded', function() {
         alert('1 jogo foi incluído com sucesso!');
         limparBtn.click();
     });
+// Botão Conferir
+conferirBtn.addEventListener('click', async () => {
+    if (jogosIncluidos.length === 0) {
+        alert('Inclua pelo menos um jogo antes de conferir!');
+        return;
+    }
 
-    // Botão Conferir
-    conferirBtn.addEventListener('click', async () => {
-        if (jogosIncluidos.length === 0) {
-            alert('Inclua pelo menos um jogo antes de conferir!');
-            return;
-        }
+    const inicio = parseInt(document.getElementById('inicio').value);
+    const fim = parseInt(document.getElementById('fim').value);
 
-        const inicio = parseInt(document.getElementById('inicio').value);
-        const fim = parseInt(document.getElementById('fim').value);
+    if (!inicio || !fim || inicio > fim) {
+        alert('Verifique os números dos concursos!');
+        return;
+    }
 
-        if (!inicio || !fim || inicio > fim) {
-            alert('Verifique os números dos concursos!');
-            return;
-        }
+    overlay.style.display = 'flex';
+    conferenciaCancelada = false;
+    toggleBotoesExportacao(false);
 
-        // Oculta os botões de exportação antes de iniciar nova consulta
-        toggleBotoesExportacao// Oculta os botões de exportação antes de iniciar nova consulta
-        toggleBotoesExportacao(false);
+    try {
+        const resultadosFinais = {
+            acertos: [],
+            resumo: { quatro: 0, cinco: 0, seis: 0, total_premios: 0 },
+            jogos_stats: []
+        };
 
-        overlay.style.display = 'flex';
-        conferenciaCancelada = false;
+        // Processa jogos em chunks
+        const CHUNK_SIZE = 5000;
+        for (let i = 0; i < jogosIncluidos.length && !conferenciaCancelada; i += CHUNK_SIZE) {
+            const chunkJogos = jogosIncluidos.slice(i, i + CHUNK_SIZE);
+            const progresso = ((i / jogosIncluidos.length) * 100).toFixed(1);
+            
+            document.querySelector('.progress-text').textContent = 
+                `Processando ${progresso}% dos jogos (${i + 1} até ${Math.min(i + CHUNK_SIZE, jogosIncluidos.length)})...`;
 
-        // Calcula os lotes para processamento
-        const lotes = calcularLotes(inicio, fim);
-        try {
+            // Processa cada chunk em lotes de concursos
+            const lotes = calcularLotes(inicio, fim);
             for (const lote of lotes) {
                 if (conferenciaCancelada) break;
 
                 document.querySelector('.progress-text').textContent = 
-                    `Processando concursos ${lote.inicio} a ${lote.fim}...`;
+                    `Processando concursos ${lote.inicio} a ${lote.fim} (${progresso}% dos jogos)...`;
 
                 const response = await fetch('/conferir', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         inicio: lote.inicio,
                         fim: lote.fim,
-                        jogos: jogosIncluidos
+                        jogos: chunkJogos
                     })
                 });
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Erro ao conferir jogos');
-                }
-
-                const data = await response.json();
-                dadosUltimaConsulta = data; // Armazena os dados da última consulta
-
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                if (data.message) {
-                    alert(data.message);
-                    continue;
-                }
-
-                // Atualizar contagens e valores
-                document.getElementById('quatro-acertos').textContent = data.resumo.quatro;
-                document.getElementById('cinco-acertos').textContent = data.resumo.cinco;
-                document.getElementById('seis-acertos').textContent = data.resumo.seis;
-
-                // Atualizar valores em reais
-                let valorQuadra = 0, valorQuina = 0, valorSena = 0;
-                let temQuadra = false, temQuina = false, temSena = false;
-
-                if (data.acertos) {
-                    data.acertos.forEach(resultado => {
-                        if (resultado.acertos === 4) {
-                            valorQuadra += resultado.premio;
-                            temQuadra = true;
-                        }
-                        if (resultado.acertos === 5) {
-                            valorQuina += resultado.premio;
-                            temQuina = true;
-                        }
-                        if (resultado.acertos === 6) {
-                            valorSena += resultado.premio;
-                            temSena = true;
-                        }
-                    });
-                }
-
-                // Atualizar os valores nos cartões
-                document.getElementById('quatro-valor').textContent = temQuadra && valorQuadra > 0 ? 
-                    `R$ ${valorQuadra.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-                    'Não houve ganhadores';
-
-                document.getElementById('cinco-valor').textContent = temQuina && valorQuina > 0 ? 
-                    `R$ ${valorQuina.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-                    'Não houve ganhadores';
-
-                document.getElementById('seis-valor').textContent = temSena && valorSena > 0 ? 
-                    `R$ ${valorSena.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
-                    'Não houve ganhadores';
-
-                // Atualizar detalhes e tabela
-                if (data.acertos && data.acertos.length > 0) {
-                    atualizarDetalhesETabela(data);
-                    // Mostra os botões de exportação após processar com sucesso
-                    toggleBotoesExportacao(true);
-                } else {
-                    toggleBotoesExportacao(false);
-                }
-
-                // Atualizar tabela de jogos sorteados
-                if (data.jogos_stats) {
-                    atualizarTabelaJogosSorteados(data.jogos_stats);
-                }
+                if (!response.ok) throw new Error('Erro ao processar jogos');
+                
+                const chunkResultados = await response.json();
+                await combinarResultados(resultadosFinais, chunkResultados);
+                await atualizarInterfaceProgressiva(resultadosFinais);
             }
-        } catch (error) {
-            console.error('Erro detalhado:', error);
-            toggleBotoesExportacao(false);
-            if (error.message.includes('<!DOCTYPE')) {
-                alert('O serviço está temporariamente indisponível. Por favor, tente novamente mais tarde ou reduza o intervalo de concursos.');
-            } else {
-                alert(error.message);
-            }
-        } finally {
-            overlay.style.display = 'none';
         }
-    });
+
+        dadosUltimaConsulta = resultadosFinais;
+        toggleBotoesExportacao(true);
+
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Ocorreu um erro ao processar os jogos. Tente novamente.');
+    } finally {
+        overlay.style.display = 'none';
+    }
 });
+
+async function atualizarInterfaceProgressiva(resultados) {
+    document.getElementById('quatro-acertos').textContent = resultados.resumo.quatro;
+    document.getElementById('cinco-acertos').textContent = resultados.resumo.cinco;
+    document.getElementById('seis-acertos').textContent = resultados.resumo.seis;
+
+    const total_premios = resultados.resumo.total_premios;
+    const premiosCard = {
+        quatro: resultados.acertos.filter(r => r.acertos === 4).reduce((sum, r) => sum + r.premio, 0),
+        cinco: resultados.acertos.filter(r => r.acertos === 5).reduce((sum, r) => sum + r.premio, 0),
+        seis: resultados.acertos.filter(r => r.acertos === 6).reduce((sum, r) => sum + r.premio, 0)
+    };
+
+    document.getElementById('quatro-valor').textContent = premiosCard.quatro > 0 ? 
+        `R$ ${premiosCard.quatro.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+        'Não houve ganhadores';
+    document.getElementById('cinco-valor').textContent = premiosCard.cinco > 0 ? 
+        `R$ ${premiosCard.cinco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+        'Não houve ganhadores';
+    document.getElementById('seis-valor').textContent = premiosCard.seis > 0 ? 
+        `R$ ${premiosCard.seis.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+        'Não houve ganhadores';
+
+    if (resultados.acertos && resultados.acertos.length > 0) {
+        atualizarDetalhesETabela(resultados);
+        toggleBotoesExportacao(true);
+    }
+
+    if (resultados.jogos_stats) {
+        atualizarTabelaJogosSorteados(resultados.jogos_stats);
+    }
+};
+
+
+
 
 //ALTERADO 24/01/2025
 // Função para calcular lotes
@@ -616,4 +639,113 @@ function calcularLotes(inicio, fim) {
         lotes.push({inicio: i, fim: loteFim});
     }
     return lotes;
+}
+
+});
+
+//ADICIONADO HOJE 26-01-2025
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction) {
+  console.log('Running in production mode');
+} else {
+  console.log('Running in development mode');
+}
+
+// const analisarDistribuicaoPontos = async () => {
+//     const API_BASE_URL = "https://loteriascaixa-api.herokuapp.com/api";
+//     let jogosStats = new Map();
+    
+//     try {
+//         const response = await fetch(`${API_BASE_URL}/megasena/latest`);
+//         const ultimo = await response.json();
+        
+//         for(let i = 1; i <= ultimo.concurso; i++) {
+//             const res = await fetch(`${API_BASE_URL}/megasena/${i}`);
+//             const data = await res.json();
+//             const dezenas = data.dezenas.map(n => parseInt(n));
+            
+//             dezenas.forEach((d1, i) => {
+//                 for(let j = i+1; j < dezenas.length; j++) {
+//                     const jogo = [d1, dezenas[j]].sort((a,b) => a-b);
+//                     const key = jogo.join(',');
+                    
+//                     if(!jogosStats.has(key)) {
+//                         jogosStats.set(key, {
+//                             numeros: jogo,
+//                             total: 0,
+//                             distribuicao: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
+//                         });
+//                     }
+                    
+//                     const acertos = jogo.filter(n => dezenas.includes(n)).length;
+//                     const stats = jogosStats.get(key);
+//                     stats.total++;
+//                     stats.distribuicao[acertos]++;
+//                 }
+//             });
+//         }
+        
+//         // Ordenar e mostrar resultados
+//         const jogosOrdenados = [...jogosStats.entries()]
+//             .sort((a, b) => b[1].total - a[1].total)
+//             .slice(0, 20);
+            
+//         const tabelaHTML = jogosOrdenados.map(([key, stats]) => `
+//             <tr>
+//                 <td>${stats.numeros.join(' ')}</td>
+//                 <td>${stats.total}</td>
+//                 <td>${Object.entries(stats.distribuicao)
+//                     .filter(([_, val]) => val > 0)
+//                     .map(([pontos, vezes]) => `${pontos} pontos: ${vezes}x`)
+//                     .join(', ')}
+//                 </td>
+//             </tr>
+//         `).join('');
+        
+//         document.getElementById('jogosFrequentes').innerHTML = `
+//             <table class="duques-table">
+//                 <thead>
+//                     <tr>
+//                         <th>Meu Jogo</th>
+//                         <th>Total de Acertos</th>
+//                         <th>Distribuição</th>
+//                     </tr>
+//                 </thead>
+//                 <tbody>
+//                     ${tabelaHTML}
+//                 </tbody>
+//             </table>
+//         `;
+//     } catch (error) {
+//         console.error('Erro:', error);
+//     }
+// };
+
+
+function encontrarPadroes(dezenas) {
+    // Encontrar padrões de acertos para cada jogo
+    for (let i = 0; i < dezenas.length; i++) {
+        const jogo = [...dezenas];
+        for (let pontos = 1; pontos <= 6; pontos++) {
+            const distribuicao = {};
+            let totalAcertos = 0;
+            
+            // Contagem de acertos por jogo
+            const acertos = jogo.filter(n => dezenas.includes(n)).length;
+            if (acertos === pontos) {
+                distribuicao[pontos] = (distribuicao[pontos] || 0) + 1;
+                totalAcertos++;
+            }
+            
+            if (totalAcertos > 0) {
+                const key = jogo.join(',');
+                jogoStats.set(key, {
+                    numeros: jogo,
+                    total: totalAcertos,
+                    distribuicao: distribuicao
+                });
+            }
+        }
+    }
 }
