@@ -147,172 +147,153 @@ def processar_arquivo():
 
 
 
+# INICIO CONFERIR
 
-# @app.route('/conferir', methods=['POST'])
-# async def conferir():
-#     try:
-#         data = request.get_json()
-#         inicio = int(data.get('inicio', 1))
-#         fim = int(data.get('fim', 2680))
-#         jogos = data.get('jogos', [])
-
-#         if not jogos:
-#             return jsonify({'error': 'Nenhum jogo fornecido'}), 400
-
-#         resultados_finais = {
-#             'acertos': [],
-#             'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0},
-#             'jogos_stats': {}
-#         }
-
-#         # Configuração simples e direta do cliente HTTP
-#         timeout = aiohttp.ClientTimeout(total=30)
-#         async with aiohttp.ClientSession(timeout=timeout) as session:
-#             for concurso in range(inicio, fim + 1):
-#                 try:
-#                     # Tenta buscar do cache primeiro
-#                     resultado = redis_config.get_cached_result(concurso)
-                    
-#                     # Se não está no cache, busca da API
-#                     if not resultado:
-#                         async with session.get(f"{API_BASE_URL}/megasena/{concurso}") as response:
-#                             if response.status == 200:
-#                                 resultado = await response.json()
-#                                 redis_config.set_cached_result(concurso, resultado)
-#                             else:
-#                                 continue
-
-#                     # Se tiver resultado, processa
-#                     if resultado and 'dezenas' in resultado:
-#                         dezenas = [int(d) for d in resultado['dezenas']]
-                        
-#                         # Processa cada jogo
-#                         for jogo in jogos:
-#                             acertos = len(set(jogo) & set(dezenas))
-#                             if acertos >= 4:
-#                                 premio = 0
-#                                 for premiacao in resultado['premiacoes']:
-#                                     if ((acertos == 6 and premiacao['descricao'] == '6 acertos') or
-#                                         (acertos == 5 and premiacao['descricao'] == '5 acertos') or
-#                                         (acertos == 4 and premiacao['descricao'] == '4 acertos')):
-#                                         premio = float(premiacao['valorPremio'])
-#                                         break
-
-#                                 # Atualiza resultados
-#                                 chave = 'quatro' if acertos == 4 else 'cinco' if acertos == 5 else 'seis'
-#                                 resultados_finais['resumo'][chave] += 1
-#                                 resultados_finais['resumo']['total_premios'] += premio
-
-#                                 # Registra o acerto
-#                                 resultados_finais['acertos'].append({
-#                                     'concurso': resultado['concurso'],
-#                                     'data': resultado['data'],
-#                                     'local': resultado.get('local', ''),
-#                                     'numeros_sorteados': dezenas,
-#                                     'seus_numeros': jogo,
-#                                     'acertos': acertos,
-#                                     'premio': premio
-#                                 })
-
-#                 except Exception as e:
-#                     logger.error(f"Erro no concurso {concurso}: {str(e)}")
-#                     continue
-
-#                 # Pequena pausa para não sobrecarregar a API
-#                 await asyncio.sleep(0.1)
-
-#         return jsonify(resultados_finais)
-
-#     except Exception as e:
-#         logger.error(f"Erro na conferência: {str(e)}")
-#         return jsonify({'error': str(e)}), 500
-    
-#ADICIONADO LOGSSSS
 @app.route('/conferir', methods=['POST'])
 async def conferir():
     try:
         data = request.get_json()
-        inicio = int(data.get('inicio', 1))
-        fim = int(data.get('fim', 2680))
         jogos = data['jogos']
-
-        logger.info(f"Iniciando conferência de {len(jogos)} jogos do concurso {inicio} até {fim}")
-
+        
+        # Definição dos lotes de concursos
+        lotes = [
+            {'inicio': 1, 'fim': 930},
+            {'inicio': 931, 'fim': 1860},
+            {'inicio': 1861, 'fim': 2790},
+            {'inicio': 2791, 'fim': await obter_ultimo_concurso()}
+        ]
+        
+        # Resultados globais
         resultados_finais = {
             'acertos': [],
-            'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0}
+            'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0},
+            'lotes_processados': []
         }
-
-        async with aiohttp.ClientSession() as session:
-            for concurso in range(inicio, fim + 1):
-                try:
-                    # Log do início do processamento do concurso
-                    logger.info(f"Processando concurso {concurso}")
-                    
-                    # Tenta buscar do cache
-                    resultado = redis_config.get_cached_result(concurso)
-                    
-                    if not resultado:
-                        # Se não está em cache, busca da API
-                        url = f"{API_BASE_URL}/megasena/{concurso}"
-                        logger.info(f"Buscando da API: {url}")
-                        
-                        async with session.get(url) as response:
-                            if response.status == 200:
-                                resultado = await response.json()
-                                logger.info(f"Concurso {concurso} obtido com sucesso")
-                                redis_config.set_cached_result(concurso, resultado)
-                            else:
-                                logger.warning(f"Erro ao buscar concurso {concurso}: Status {response.status}")
-                                continue
-                    
-                    if resultado and 'dezenas' in resultado:
-                        dezenas = [int(d) for d in resultado['dezenas']]
-                        logger.info(f"Dezenas do concurso {concurso}: {dezenas}")
-                        
-                        for jogo in jogos:
-                            acertos = len(set(jogo) & set(dezenas))
-                            if acertos >= 4:
-                                premio = calcular_premio(resultado, acertos)
-                                chave = 'quatro' if acertos == 4 else 'cinco' if acertos == 5 else 'seis'
-                                
-                                resultados_finais['resumo'][chave] += 1
-                                resultados_finais['resumo']['total_premios'] += premio
-                                
-                                resultados_finais['acertos'].append({
-                                    'concurso': resultado['concurso'],
-                                    'data': resultado['data'],
-                                    'local': resultado.get('local', ''),
-                                    'numeros_sorteados': dezenas,
-                                    'seus_numeros': jogo,
-                                    'acertos': acertos,
-                                    'premio': premio
-                                })
-                                
-                                logger.info(f"Encontrado {acertos} acertos no concurso {concurso}")
-
-                except Exception as e:
-                    logger.error(f"Erro processando concurso {concurso}: {str(e)}")
-                    continue
-
-                await asyncio.sleep(0.1)  # Pequena pausa entre requisições
-
-        # Log do resultado final
-        logger.info(f"Processamento concluído. Encontrados: Quadra: {resultados_finais['resumo']['quatro']}, "
-                   f"Quina: {resultados_finais['resumo']['cinco']}, "
-                   f"Sena: {resultados_finais['resumo']['seis']}")
-
+        
+        # Processa cada lote
+        for lote in lotes:
+            logger.info(f"Processando Lote: {lote['inicio']} a {lote['fim']}")
+            
+            try:
+                # Processa o lote atual
+                resultado_lote = await processar_lote(jogos, lote['inicio'], lote['fim'])
+                
+                # Adiciona resultados do lote aos resultados finais
+                resultados_finais['acertos'].extend(resultado_lote['acertos'])
+                resultados_finais['resumo']['quatro'] += resultado_lote['resumo']['quatro']
+                resultados_finais['resumo']['cinco'] += resultado_lote['resumo']['cinco']
+                resultados_finais['resumo']['seis'] += resultado_lote['resumo']['seis']
+                resultados_finais['resumo']['total_premios'] += resultado_lote['resumo']['total_premios']
+                
+                # Registra que o lote foi processado
+                resultados_finais['lotes_processados'].append({
+                    'inicio': lote['inicio'],
+                    'fim': lote['fim'],
+                    'total_acertos': len(resultado_lote['acertos'])
+                })
+                
+            except Exception as e:
+                logger.error(f"Erro ao processar lote {lote['inicio']} a {lote['fim']}: {str(e)}")
+                # Opcional: adicionar informação do lote que falhou
+                resultados_finais['lotes_processados'].append({
+                    'inicio': lote['inicio'],
+                    'fim': lote['fim'],
+                    'erro': str(e)
+                })
+        
+        # Log final
+        logger.info(f"Processamento de todos os lotes concluído. "
+                    f"Quadras: {resultados_finais['resumo']['quatro']}, "
+                    f"Quinas: {resultados_finais['resumo']['cinco']}, "
+                    f"Senas: {resultados_finais['resumo']['seis']}")
+        
         return jsonify(resultados_finais)
 
     except Exception as e:
-        logger.error(f"Erro na conferência: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Erro na conferência geral: {str(e)}")
         return jsonify({
             'error': 'Erro ao processar jogos',
-            'message': str(e),
-            'trace': traceback.format_exc()
+            'message': str(e)
         }), 500
 
+async def processar_lote(jogos, inicio, fim):
+    resultados_lote = {
+        'acertos': [],
+        'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0}
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        for concurso in range(inicio, fim + 1):
+            try:
+                logger.info(f"Processando concurso {concurso}")
+                
+                # Tenta buscar do cache
+                resultado = redis_config.get_cached_result(concurso)
+                
+                if not resultado:
+                    # Se não está em cache, busca da API
+                    url = f"{API_BASE_URL}/megasena/{concurso}"
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            resultado = await response.json()
+                            redis_config.set_cached_result(concurso, resultado)
+                        else:
+                            logger.warning(f"Erro ao buscar concurso {concurso}: Status {response.status}")
+                            continue
+                
+                if resultado and 'dezenas' in resultado:
+                    dezenas = [int(d) for d in resultado['dezenas']]
+                    logger.info(f"Dezenas do concurso {concurso}: {dezenas}")
+                    
+                    for jogo in jogos:
+                        acertos = len(set(jogo) & set(dezenas))
+                        if acertos >= 4:
+                            premio = calcular_premio(resultado, acertos)
+                            
+                            # Atualiza resumo do lote
+                            if acertos == 4:
+                                resultados_lote['resumo']['quatro'] += 1
+                            elif acertos == 5:
+                                resultados_lote['resumo']['cinco'] += 1
+                            else:
+                                resultados_lote['resumo']['seis'] += 1
+                            
+                            resultados_lote['resumo']['total_premios'] += premio
+                            
+                            # Registra acerto
+                            resultados_lote['acertos'].append({
+                                'concurso': resultado['concurso'],
+                                'data': resultado['data'],
+                                'local': resultado.get('local', ''),
+                                'numeros_sorteados': dezenas,
+                                'seus_numeros': jogo,
+                                'acertos': acertos,
+                                'premio': premio
+                            })
+                            
+                            logger.info(f"Encontrado {acertos} acertos no concurso {concurso}")
 
+            except Exception as e:
+                logger.error(f"Erro processando concurso {concurso}: {str(e)}")
+                continue
+
+            await asyncio.sleep(0.1)  # Pequena pausa entre requisições
+    
+    return resultados_lote
+
+async def obter_ultimo_concurso():
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{API_BASE_URL}/megasena/latest") as response:
+                if response.status == 200:
+                    latest = await response.json()
+                    return latest['concurso']
+                return 2680  # Valor padrão se falhar
+    except Exception as e:
+        logger.error(f"Erro ao buscar último concurso: {str(e)}")
+        return 2680  # Valor padrão
+
+# FIM CONFERIR
 
 
 async def fetch_concurso_with_retry(session, concurso, max_retries=3, delay_base=1):
