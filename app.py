@@ -304,33 +304,17 @@ def processar_resultados_finais(resultados, jogos_stats):
 """
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5000)
-"""
+
 
  #LOCALHOST
 if __name__ == '__main__':
     app.run(debug=True)
 
-"""
 
-
-
-# @app.route('/status')
-# def get_status():
-#     if not stats.start_time:
-#         return jsonify({'status': 'idle'})
-        
-#     return jsonify({
-#         'status': 'processing',
-#         'processed_jogos': stats.processed_jogos,
-#         'processed_concursos': stats.processed_concursos,
-#         'errors': stats.errors,
-#         'elapsed_time': time.time() - stats.start_time
-#     })
-
-"""
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
 """
+
 
 # Agora a parte de configuração da porta
 if __name__ == '__main__':
