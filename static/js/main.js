@@ -446,8 +446,190 @@ function atualizarDetalhesETabela(data) {
     }
 }
 
+// // Inicialização do documento
+// document.addEventListener('DOMContentLoaded', function() {
+//     setupDragAndDrop();
+//     const numeros = document.querySelectorAll('.numero');
+//     const limparBtn = document.getElementById('limpar');
+//     const sugestaoBtn = document.getElementById('sugestao');
+//     const conferirBtn = document.getElementById('conferir');
+//     const incluirBtn = document.getElementById('incluir');
+//     const listaJogos = document.getElementById('lista-jogos');
+//     const overlay = document.getElementById('overlay');
+//     const numerosSelecionados = new Set();
+
+//     // Ocultar botões de exportação inicialmente
+//     toggleBotoesExportacao(false);
+
+//     // Configuração do botão de cancelar conferência
+//     const btnCancelarConferencia = document.getElementById('btn-cancelar-conferencia');
+//     if (btnCancelarConferencia) {
+//         btnCancelarConferencia.addEventListener('click', () => {
+//             conferenciaCancelada = true;
+//             overlay.style.display = 'none';
+//         });
+//     }
+
+//     // Configuração dos botões de ação
+//     document.getElementById('btn-limpar-todos').addEventListener('click', limparTodosJogos);
+//     document.getElementById('btn-remover-selecionados').addEventListener('click', removerJogosSelecionados);
+
+//     // Inicialização
+//     atualizarContadorJogos();
+
+//     // Eventos de seleção de números
+//     numeros.forEach(numero => {
+//         numero.addEventListener('click', () => {
+//             const num = parseInt(numero.dataset.numero);
+//             if (numero.classList.contains('selecionado')) {
+//                 numero.classList.remove('selecionado');
+//                 numerosSelecionados.delete(num);
+//             } else if (numerosSelecionados.size < 6) {
+//                 numero.classList.add('selecionado');
+//                 numerosSelecionados.add(num);
+//             }
+//         });
+//     });
+
+//     // Botão Limpar
+//     limparBtn.addEventListener('click', () => {
+//         numeros.forEach(numero => numero.classList.remove('selecionado'));
+//         numerosSelecionados.clear();
+//     });
+
+//     // Botão Sugestão
+//     sugestaoBtn.addEventListener('click', async () => {
+//         const response = await fetch('/gerar_numeros');
+//         const data = await response.json();
+
+//         limparBtn.click();
+//         data.numeros.forEach(num => {
+//             const numero = document.querySelector(`[data-numero="${num}"]`);
+//             numero.classList.add('selecionado');
+//             numerosSelecionados.add(num);
+//         });
+//     });
+
+//     // Botão Incluir
+//     incluirBtn.addEventListener('click', () => {
+//         if (numerosSelecionados.size !== 6) {
+//             alert('Selecione 6 números antes de incluir o jogo!');
+//             return;
+//         }
+
+//         const numerosArray = Array.from(numerosSelecionados).sort((a, b) => a - b);
+//         jogosIncluidos.push(numerosArray);
+//         adicionarJogoNaLista(numerosArray);
+//         atualizarContadorJogos();
+//         alert('1 jogo foi incluído com sucesso!');
+//         limparBtn.click();
+//     });
+// // Botão Conferir
+// conferirBtn.addEventListener('click', async () => {
+//     if (jogosIncluidos.length === 0) {
+//         alert('Inclua pelo menos um jogo antes de conferir!');
+//         return;
+//     }
+
+//     const inicio = parseInt(document.getElementById('inicio').value);
+//     const fim = parseInt(document.getElementById('fim').value);
+
+//     if (!inicio || !fim || inicio > fim) {
+//         alert('Verifique os números dos concursos!');
+//         return;
+//     }
+
+//     overlay.style.display = 'flex';
+//     conferenciaCancelada = false;
+//     toggleBotoesExportacao(false);
+
+//     try {
+//         const resultadosFinais = {
+//             acertos: [],
+//             resumo: { quatro: 0, cinco: 0, seis: 0, total_premios: 0 },
+//             jogos_stats: []
+//         };
+
+//         // Processa jogos em chunks
+//         const CHUNK_SIZE = 5000;
+//         for (let i = 0; i < jogosIncluidos.length && !conferenciaCancelada; i += CHUNK_SIZE) {
+//             const chunkJogos = jogosIncluidos.slice(i, i + CHUNK_SIZE);
+//             const progresso = ((i / jogosIncluidos.length) * 100).toFixed(1);
+            
+//             document.querySelector('.progress-text').textContent = 
+//                 `Processando ${progresso}% dos jogos (${i + 1} até ${Math.min(i + CHUNK_SIZE, jogosIncluidos.length)})...`;
+
+//             // Processa cada chunk em lotes de concursos
+//             const lotes = calcularLotes(inicio, fim);
+//             for (const lote of lotes) {
+//                 if (conferenciaCancelada) break;
+
+//                 document.querySelector('.progress-text').textContent = 
+//                     `Processando concursos ${lote.inicio} a ${lote.fim} (${progresso}% dos jogos)...`;
+
+//                 const response = await fetch('/conferir', {
+//                     method: 'POST',
+//                     headers: { 'Content-Type': 'application/json' },
+//                     body: JSON.stringify({
+//                         inicio: lote.inicio,
+//                         fim: lote.fim,
+//                         jogos: chunkJogos
+//                     })
+//                 });
+
+//                 if (!response.ok) throw new Error('Erro ao processar jogos');
+                
+//                 const chunkResultados = await response.json();
+//                 await combinarResultados(resultadosFinais, chunkResultados);
+//                 await atualizarInterfaceProgressiva(resultadosFinais);
+//             }
+//         }
+
+//         dadosUltimaConsulta = resultadosFinais;
+//         toggleBotoesExportacao(true);
+
+//     } catch (error) {
+//         console.error('Erro:', error);
+//         alert('Ocorreu um erro ao processar os jogos. Tente novamente.');
+//     } finally {
+//         overlay.style.display = 'none';
+//     }
+// });
+
+// async function atualizarInterfaceProgressiva(resultados) {
+//     document.getElementById('quatro-acertos').textContent = resultados.resumo.quatro;
+//     document.getElementById('cinco-acertos').textContent = resultados.resumo.cinco;
+//     document.getElementById('seis-acertos').textContent = resultados.resumo.seis;
+
+//     const total_premios = resultados.resumo.total_premios;
+//     const premiosCard = {
+//         quatro: resultados.acertos.filter(r => r.acertos === 4).reduce((sum, r) => sum + r.premio, 0),
+//         cinco: resultados.acertos.filter(r => r.acertos === 5).reduce((sum, r) => sum + r.premio, 0),
+//         seis: resultados.acertos.filter(r => r.acertos === 6).reduce((sum, r) => sum + r.premio, 0)
+//     };
+
+//     document.getElementById('quatro-valor').textContent = premiosCard.quatro > 0 ? 
+//         `R$ ${premiosCard.quatro.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+//         'Não houve ganhadores';
+//     document.getElementById('cinco-valor').textContent = premiosCard.cinco > 0 ? 
+//         `R$ ${premiosCard.cinco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+//         'Não houve ganhadores';
+//     document.getElementById('seis-valor').textContent = premiosCard.seis > 0 ? 
+//         `R$ ${premiosCard.seis.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 
+//         'Não houve ganhadores';
+
+//     if (resultados.acertos && resultados.acertos.length > 0) {
+//         atualizarDetalhesETabela(resultados);
+//         toggleBotoesExportacao(true);
+//     }
+
+//     if (resultados.jogos_stats) {
+//         atualizarTabelaJogosSorteados(resultados.jogos_stats);
+//     }
+// };
+
 // Inicialização do documento
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     setupDragAndDrop();
     const numeros = document.querySelectorAll('.numero');
     const limparBtn = document.getElementById('limpar');
@@ -458,6 +640,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const overlay = document.getElementById('overlay');
     const numerosSelecionados = new Set();
 
+    
     // Ocultar botões de exportação inicialmente
     toggleBotoesExportacao(false);
 
@@ -524,6 +707,7 @@ document.addEventListener('DOMContentLoaded', function() {
         alert('1 jogo foi incluído com sucesso!');
         limparBtn.click();
     });
+
 // Botão Conferir
 conferirBtn.addEventListener('click', async () => {
     if (jogosIncluidos.length === 0) {
@@ -594,6 +778,7 @@ conferirBtn.addEventListener('click', async () => {
     } finally {
         overlay.style.display = 'none';
     }
+
 });
 
 async function atualizarInterfaceProgressiva(resultados) {
@@ -644,6 +829,21 @@ function calcularLotes(inicio, fim) {
 
 });
 
+
+
+// //ALTERADO 24/01/2025
+// // Função para calcular lotes
+// function calcularLotes(inicio, fim) {
+//     const lotes = [];
+//     for (let i = inicio; i <= fim; i += TAMANHO_LOTE) {
+//         const loteFim = Math.min(i + TAMANHO_LOTE - 1, fim);
+//         lotes.push({inicio: i, fim: loteFim});
+//     }
+//     return lotes;
+// }
+
+// });
+
 //ADICIONADO HOJE 26-01-2025
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -653,6 +853,8 @@ if (isProduction) {
   console.log('Running in development mode');
 }
 
+
+// //Tras as informações dos jogos sorteados... como antes
 // const analisarDistribuicaoPontos = async () => {
 //     const API_BASE_URL = "https://loteriascaixa-api.herokuapp.com/api";
 //     let jogosStats = new Map();
@@ -723,30 +925,97 @@ if (isProduction) {
 //     }
 // };
 
-
-function encontrarPadroes(dezenas) {
-    // Encontrar padrões de acertos para cada jogo
-    for (let i = 0; i < dezenas.length; i++) {
-        const jogo = [...dezenas];
-        for (let pontos = 1; pontos <= 6; pontos++) {
-            const distribuicao = {};
-            let totalAcertos = 0;
+const analisarDistribuicaoPontos = async () => {
+    const API_BASE_URL = "https://loteriascaixa-api.herokuapp.com/api";
+    let jogosStats = new Map();
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/megasena/latest`);
+        const ultimo = await response.json();
+        
+        for(let i = 1; i <= ultimo.concurso; i++) {
+            const res = await fetch(`${API_BASE_URL}/megasena/${i}`);
+            const data = await res.json();
+            const dezenas = data.dezenas.map(n => parseInt(n));
             
-            // Contagem de acertos por jogo
-            const acertos = jogo.filter(n => dezenas.includes(n)).length;
-            if (acertos === pontos) {
-                distribuicao[pontos] = (distribuicao[pontos] || 0) + 1;
-                totalAcertos++;
-            }
-            
-            if (totalAcertos > 0) {
-                const key = jogo.join(',');
-                jogoStats.set(key, {
-                    numeros: jogo,
-                    total: totalAcertos,
-                    distribuicao: distribuicao
-                });
-            }
+            dezenas.forEach((d1, i) => {
+                for(let j = i+1; j < dezenas.length; j++) {
+                    const jogo = [d1, dezenas[j]].sort((a,b) => a-b);
+                    const key = jogo.join(',');
+                    
+                    if(!jogosStats.has(key)) {
+                        jogosStats.set(key, {
+                            numeros: jogo,
+                            total: 0,
+                            distribuicao: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
+                        });
+                    }
+                    
+                    const acertos = jogo.filter(n => dezenas.includes(n)).length;
+                    const stats = jogosStats.get(key);
+                    stats.total++;
+                    stats.distribuicao[acertos]++;
+                }
+            });
         }
+        
+        // Ordenar e mostrar resultados
+        const jogosOrdenados = [...jogosStats.entries()]
+            .sort((a, b) => b[1].total - a[1].total)
+            .slice(0, 20);
+            
+        const tbody = document.querySelector('#tabela-jogos-sorteados tbody');
+        if (tbody) {
+            tbody.innerHTML = jogosOrdenados.map(([key, stats]) => `
+                <tr>
+                    <td>
+                        <div class="numeros-tabela">
+                            ${stats.numeros.map(n => 
+                                `<span class="numero-tabela">${String(n).padStart(2, '0')}</span>`
+                            ).join('')}
+                        </div>
+                    </td>
+                    <td>${stats.total}</td>
+                    <td>${Object.entries(stats.distribuicao)
+                        .filter(([_, val]) => val > 0)
+                        .map(([pontos, vezes]) => 
+                            `<span class="distribuicao-badge">
+                                ${pontos} ponto${pontos !== '1' ? 's' : ''}: ${vezes} vez${vezes !== 1 ? 'es' : ''}
+                            </span>`
+                        ).join(' ')}
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
     }
-}
+};
+
+
+// function encontrarPadroes(dezenas) {
+//     // Encontrar padrões de acertos para cada jogo
+//     for (let i = 0; i < dezenas.length; i++) {
+//         const jogo = [...dezenas];
+//         for (let pontos = 1; pontos <= 6; pontos++) {
+//             const distribuicao = {};
+//             let totalAcertos = 0;
+            
+//             // Contagem de acertos por jogo
+//             const acertos = jogo.filter(n => dezenas.includes(n)).length;
+//             if (acertos === pontos) {
+//                 distribuicao[pontos] = (distribuicao[pontos] || 0) + 1;
+//                 totalAcertos++;
+//             }
+            
+//             if (totalAcertos > 0) {
+//                 const key = jogo.join(',');
+//                 jogoStats.set(key, {
+//                     numeros: jogo,
+//                     total: totalAcertos,
+//                     distribuicao: distribuicao
+//                 });
+//             }
+//         }
+//     }
+// }
