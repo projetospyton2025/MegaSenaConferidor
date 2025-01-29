@@ -11,6 +11,31 @@ import pandas as pd
 import io
 import os
 
+# Configurações globais para controle de requisições e processamento
+CONCURRENT_REQUESTS = 5  # Número máximo de requisições simultâneas
+BATCH_SIZE = 930        # Tamanho do lote de concursos
+RETRY_ATTEMPTS = 3      # Número de tentativas para cada requisição
+BASE_DELAY = 1         # Delay base em segundos para retry
+API_BASE_URL = "https://loteriascaixa-api.herokuapp.com/api"  # Movido para constantes globais
+
+
+# Configurações existentes do Flask
+FLASK_RUN_TIMEOUT = 900  # 15 minutos
+CHUNK_SIZE = 1000        # Reduzido de 5000 para 1000
+CONCURSOS_PER_BATCH = 930  # Manter atual divisão de concursos
+MAX_CONCURRENT_REQUESTS = 5  # Reduzido de 10 para 5
+
+
+# Configuração de logs
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("Mega Sena Conferidor")
+
+# Carregar variáveis do .env
+load_dotenv()
+
+app = Flask(__name__)
+
+
 async def fetch_with_retry(session, url, max_retries=3):
     timeout = aiohttp.ClientTimeout(total=30)
     for attempt in range(max_retries):
@@ -40,25 +65,6 @@ async def process_concurso(session, concurso, jogos):
         logger.error(f"Erro concurso {concurso}: {e}")
         return None
 
-
-
-FLASK_RUN_TIMEOUT = 900  # 15 minutos
-CHUNK_SIZE = 1000  # Reduzido de 5000 para 1000
-CONCURSOS_PER_BATCH = 930  # Manter atual divisão de concursos
-MAX_CONCURRENT_REQUESTS = 5  # Reduzido de 10 para 5
-
-# Configuração de logs
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("Mega Sena Conferidor")
-
-#ADICIONADO HOJE 26-01-2025
-# Carregar variáveis do .env
-load_dotenv()
-
-
-app = Flask(__name__)
-
-API_BASE_URL = "https://loteriascaixa-api.herokuapp.com/api"
 
 async def get_latest_result():
     try:
@@ -142,7 +148,86 @@ def processar_arquivo():
 
 
 
+# @app.route('/conferir', methods=['POST'])
+# async def conferir():
+#     try:
+#         data = request.get_json()
+#         inicio = int(data.get('inicio', 1))
+#         fim = int(data.get('fim', 2680))
+#         jogos = data.get('jogos', [])
 
+#         if not jogos:
+#             return jsonify({'error': 'Nenhum jogo fornecido'}), 400
+
+#         resultados_finais = {
+#             'acertos': [],
+#             'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0},
+#             'jogos_stats': {}
+#         }
+
+#         # Configuração simples e direta do cliente HTTP
+#         timeout = aiohttp.ClientTimeout(total=30)
+#         async with aiohttp.ClientSession(timeout=timeout) as session:
+#             for concurso in range(inicio, fim + 1):
+#                 try:
+#                     # Tenta buscar do cache primeiro
+#                     resultado = redis_config.get_cached_result(concurso)
+                    
+#                     # Se não está no cache, busca da API
+#                     if not resultado:
+#                         async with session.get(f"{API_BASE_URL}/megasena/{concurso}") as response:
+#                             if response.status == 200:
+#                                 resultado = await response.json()
+#                                 redis_config.set_cached_result(concurso, resultado)
+#                             else:
+#                                 continue
+
+#                     # Se tiver resultado, processa
+#                     if resultado and 'dezenas' in resultado:
+#                         dezenas = [int(d) for d in resultado['dezenas']]
+                        
+#                         # Processa cada jogo
+#                         for jogo in jogos:
+#                             acertos = len(set(jogo) & set(dezenas))
+#                             if acertos >= 4:
+#                                 premio = 0
+#                                 for premiacao in resultado['premiacoes']:
+#                                     if ((acertos == 6 and premiacao['descricao'] == '6 acertos') or
+#                                         (acertos == 5 and premiacao['descricao'] == '5 acertos') or
+#                                         (acertos == 4 and premiacao['descricao'] == '4 acertos')):
+#                                         premio = float(premiacao['valorPremio'])
+#                                         break
+
+#                                 # Atualiza resultados
+#                                 chave = 'quatro' if acertos == 4 else 'cinco' if acertos == 5 else 'seis'
+#                                 resultados_finais['resumo'][chave] += 1
+#                                 resultados_finais['resumo']['total_premios'] += premio
+
+#                                 # Registra o acerto
+#                                 resultados_finais['acertos'].append({
+#                                     'concurso': resultado['concurso'],
+#                                     'data': resultado['data'],
+#                                     'local': resultado.get('local', ''),
+#                                     'numeros_sorteados': dezenas,
+#                                     'seus_numeros': jogo,
+#                                     'acertos': acertos,
+#                                     'premio': premio
+#                                 })
+
+#                 except Exception as e:
+#                     logger.error(f"Erro no concurso {concurso}: {str(e)}")
+#                     continue
+
+#                 # Pequena pausa para não sobrecarregar a API
+#                 await asyncio.sleep(0.1)
+
+#         return jsonify(resultados_finais)
+
+#     except Exception as e:
+#         logger.error(f"Erro na conferência: {str(e)}")
+#         return jsonify({'error': str(e)}), 500
+    
+#ADICIONADO LOGSSSS
 @app.route('/conferir', methods=['POST'])
 async def conferir():
     try:
@@ -151,92 +236,113 @@ async def conferir():
         fim = int(data.get('fim', 2680))
         jogos = data['jogos']
 
+        logger.info(f"Iniciando conferência de {len(jogos)} jogos do concurso {inicio} até {fim}")
+
         resultados_finais = {
             'acertos': [],
-            'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0},
-            'jogos_stats': {}  # Adicionado para estatísticas por jogo
+            'resumo': {'quatro': 0, 'cinco': 0, 'seis': 0, 'total_premios': 0}
         }
 
-        timeout = aiohttp.ClientTimeout(total=60)
-
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            for i in range(inicio, fim + 1, 930):
-                fim_lote = min(i + 929, fim)
-                
-                semaphore = asyncio.Semaphore(5)
-                for concurso in range(i, fim_lote + 1):
-                    async with semaphore:
-                        try:
-                            cached = redis_config.get_cached_result(concurso)
-                            if cached:
-                                resultado = cached
+        async with aiohttp.ClientSession() as session:
+            for concurso in range(inicio, fim + 1):
+                try:
+                    # Log do início do processamento do concurso
+                    logger.info(f"Processando concurso {concurso}")
+                    
+                    # Tenta buscar do cache
+                    resultado = redis_config.get_cached_result(concurso)
+                    
+                    if not resultado:
+                        # Se não está em cache, busca da API
+                        url = f"{API_BASE_URL}/megasena/{concurso}"
+                        logger.info(f"Buscando da API: {url}")
+                        
+                        async with session.get(url) as response:
+                            if response.status == 200:
+                                resultado = await response.json()
+                                logger.info(f"Concurso {concurso} obtido com sucesso")
+                                redis_config.set_cached_result(concurso, resultado)
                             else:
-                                async with session.get(f"{API_BASE_URL}/megasena/{concurso}") as response:
-                                    if response.status == 200:
-                                        resultado = await response.json()
-                                        redis_config.set_cached_result(concurso, resultado)
-                                    else:
-                                        continue
-
-                            dezenas = [int(d) for d in resultado['dezenas']]
-                            
-                            # Atualiza estatísticas para cada jogo
-                            for jogo in jogos:
-                                resultados_finais['jogos_stats'] = atualizar_estatisticas_jogo(
-                                    resultados_finais['jogos_stats'], 
-                                    jogo, 
-                                    dezenas
-                                )
+                                logger.warning(f"Erro ao buscar concurso {concurso}: Status {response.status}")
+                                continue
+                    
+                    if resultado and 'dezenas' in resultado:
+                        dezenas = [int(d) for d in resultado['dezenas']]
+                        logger.info(f"Dezenas do concurso {concurso}: {dezenas}")
+                        
+                        for jogo in jogos:
+                            acertos = len(set(jogo) & set(dezenas))
+                            if acertos >= 4:
+                                premio = calcular_premio(resultado, acertos)
+                                chave = 'quatro' if acertos == 4 else 'cinco' if acertos == 5 else 'seis'
                                 
-                                # Processa premiações
-                                acertos = len(set(jogo) & set(dezenas))
-                                if acertos >= 4:
-                                    premio = 0
-                                    for premiacao in resultado['premiacoes']:
-                                        if ((acertos == 6 and premiacao['descricao'] == '6 acertos') or
-                                            (acertos == 5 and premiacao['descricao'] == '5 acertos') or
-                                            (acertos == 4 and premiacao['descricao'] == '4 acertos')):
-                                            premio = float(premiacao['valorPremio'])
-                                            break
+                                resultados_finais['resumo'][chave] += 1
+                                resultados_finais['resumo']['total_premios'] += premio
+                                
+                                resultados_finais['acertos'].append({
+                                    'concurso': resultado['concurso'],
+                                    'data': resultado['data'],
+                                    'local': resultado.get('local', ''),
+                                    'numeros_sorteados': dezenas,
+                                    'seus_numeros': jogo,
+                                    'acertos': acertos,
+                                    'premio': premio
+                                })
+                                
+                                logger.info(f"Encontrado {acertos} acertos no concurso {concurso}")
 
-                                    resultados_finais['resumo'][f'{"quatro" if acertos == 4 else "cinco" if acertos == 5 else "seis"}'] += 1
-                                    resultados_finais['resumo']['total_premios'] += premio
+                except Exception as e:
+                    logger.error(f"Erro processando concurso {concurso}: {str(e)}")
+                    continue
 
-                                    resultados_finais['acertos'].append({
-                                        'concurso': resultado['concurso'],
-                                        'data': resultado['data'],
-                                        'local': resultado.get('local', ''),
-                                        'numeros_sorteados': dezenas,
-                                        'seus_numeros': jogo,
-                                        'acertos': acertos,
-                                        'premio': premio
-                                    })
+                await asyncio.sleep(0.1)  # Pequena pausa entre requisições
 
-                        except Exception as e:
-                            logger.error(f"Erro no concurso {concurso}: {str(e)}")
-                            continue
+        # Log do resultado final
+        logger.info(f"Processamento concluído. Encontrados: Quadra: {resultados_finais['resumo']['quatro']}, "
+                   f"Quina: {resultados_finais['resumo']['cinco']}, "
+                   f"Sena: {resultados_finais['resumo']['seis']}")
 
-                await asyncio.sleep(1)
-
-        # Processa e ordena as estatísticas finais
-        jogos_stats_ordenados = sorted(
-            [{'numeros': stats['numeros'], 
-              'total': stats['total'], 
-              'distribuicao': stats['distribuicao']} 
-             for stats in resultados_finais['jogos_stats'].values()],
-            key=lambda x: x['total'],
-            reverse=True
-        )[:10]
-
-        resultados_finais['jogos_stats'] = jogos_stats_ordenados
         return jsonify(resultados_finais)
 
     except Exception as e:
-        logger.error(f"Erro na conferência: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Erro na conferência: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({
+            'error': 'Erro ao processar jogos',
+            'message': str(e),
+            'trace': traceback.format_exc()
+        }), 500
 
 
 
+
+async def fetch_concurso_with_retry(session, concurso, max_retries=3, delay_base=1):
+    for attempt in range(max_retries):
+        try:
+            cached = redis_config.get_cached_result(concurso)
+            if cached:
+                return cached
+
+            async with session.get(f"{API_BASE_URL}/megasena/{concurso}") as response:
+                if response.status == 200:
+                    resultado = await response.json()
+                    if resultado and 'dezenas' in resultado:
+                        redis_config.set_cached_result(concurso, resultado)
+                        return resultado
+                
+                # Se chegou aqui, a resposta não foi válida
+                delay = delay_base * (2 ** attempt)  # Exponential backoff
+                await asyncio.sleep(delay)
+                continue
+                
+        except Exception as e:
+            logger.error(f"Tentativa {attempt + 1} falhou para concurso {concurso}: {str(e)}")
+            if attempt < max_retries - 1:
+                delay = delay_base * (2 ** attempt)
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"Todas as tentativas falharam para concurso {concurso}")
+                return None
+    return None
 
 
 def atualizar_estatisticas_jogo(jogos_stats, jogo, dezenas):

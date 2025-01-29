@@ -5,6 +5,7 @@ let conferenciaCancelada = false;
 let dadosUltimaConsulta = null;
 
 
+
 // Configuração tamanho do lote
 const TAMANHO_LOTE = 930;
 
